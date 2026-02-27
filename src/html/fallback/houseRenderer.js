@@ -16,9 +16,40 @@ function chunkLines(text, size) {
   return out;
 }
 
+function normalizeFallbackText(text) {
+  let s = String(text || "");
+  s = s.replace(/\r\n?/g, "\n");
+  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, " ");
+  s = s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+
+  const newlineCount = (s.match(/\n/g) || []).length;
+  const sparseNewlines = newlineCount < Math.max(1, Math.floor(s.length / 800));
+  if (!sparseNewlines) return s.trim();
+
+  const words = s.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const wrapped = [];
+  let line = "";
+  const target = 400;
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (next.length > target && line) {
+      wrapped.push(line);
+      line = w;
+    } else if (next.length > target) {
+      wrapped.push(next.slice(0, target));
+      line = next.slice(target);
+    } else {
+      line = next;
+    }
+  }
+  if (line) wrapped.push(line);
+  return wrapped.join("\n").trim();
+}
+
 function renderHouseFallback({ title, combinedText, sourceFiles }) {
-  const groups = chunkLines(combinedText, 6).slice(0, 10);
-  const slides = groups.length ? groups : [["내용을 추출하지 못했습니다."]];
+  const normalizedText = normalizeFallbackText(combinedText);
+  const groups = chunkLines(normalizedText, 6).slice(0, 10);
+  const slides = groups.length ? groups : [["Could not extract content."]];
 
   const sections = slides.map((g, idx) => `
 <section class="slide${idx === 0 ? " active" : ""}">

@@ -28,6 +28,7 @@ function createHtmlPrompts({ combinedText, title }) {
 function createRepairPrompt(rawHtml) {
   return [
     "Fix HTML validity, remove broken tags, ensure navigation works.",
+    "If slides are fewer than 2 or <section class=\"slide\"> is missing, restructure into 2+ section.slide blocks.",
     "Do not change slide content unless required to fix breakage.",
     "Preserve slide count unless slides are empty or structurally broken.",
     "Return complete HTML only.",
