@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Report2Slide v1</title>
+    <title>Report2Slide</title>
     <style>
       :root { --bg:#f5f7fb; --ink:#111827; --muted:#6b7280; --line:#d1d5db; --pri:#0f766e; }
       * { box-sizing:border-box; }
@@ -11,22 +11,87 @@
       .wrap { max-width:1200px; margin:24px auto; padding:0 16px; }
       .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
       .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+      .heading { margin: 0 0 6px; font-size: 28px; }
+      .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+      label { font-size: 14px; color: var(--ink); }
+      select { border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#fff; color:var(--ink); }
       button { border:0; background:var(--pri); color:#fff; padding:10px 14px; border-radius:8px; cursor:pointer; }
       button[disabled] { opacity:0.6; cursor:not-allowed; }
       a.btn { display:inline-block; text-decoration:none; border:1px solid var(--line); color:var(--ink); padding:10px 14px; border-radius:8px; }
+      .progress {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid #bfe3df;
+        background: #ecfdfa;
+        color: #115e59;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .progress-log-wrap {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 10px 12px;
+      }
+      .progress-log-title {
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .progress-log {
+        margin: 0;
+        padding-left: 18px;
+        color: #334155;
+        font-size: 13px;
+        display: grid;
+        gap: 4px;
+      }
+      .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #c6d7ee;
+        border-top-color: #0f766e;
+        border-radius: 50%;
+        animation: spin .9s linear infinite;
+      }
+      .hidden { display: none !important; }
       .meta { margin-top:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; }
       .meta div { border:1px solid var(--line); border-radius:8px; padding:8px; background:#fafafa; font-size:13px; }
       iframe { width:100%; height:70vh; border:1px solid var(--line); border-radius:12px; margin-top:16px; background:#fff; }
       .err { color:#b91c1c; margin-top:10px; }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="panel">
+        <h1 class="heading">Report2Slide</h1>
+        <p class="sub">Generate HTML decks directly from documents with Gemini.</p>
         <div class="row">
           <input id="files" type="file" multiple>
+          <label>LLM Model
+            <select id="llmModelInput">
+              <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            </select>
+          </label>
           <button id="generate">Generate</button>
           <a id="download" class="btn" download="report2slide.html" href="#">Download</a>
+        </div>
+        <div id="progress" class="progress hidden">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="progressText">Processing... (0s)</span>
+        </div>
+        <div id="progressLogWrap" class="progress-log-wrap hidden">
+          <p class="progress-log-title">Progress Log</p>
+          <ul id="progressLog" class="progress-log"></ul>
         </div>
         <div id="meta" class="meta"></div>
         <div id="error" class="err"></div>
@@ -36,6 +101,8 @@
 
     <script>
       let blobUrl = "";
+      let progressTimer = null;
+      let progressSec = 0;
       const fields = [
         "mode", "renderMode", "whyFallback", "extractionMethod", "finalizeApplied", "repairAttempted",
         "rawLength", "extractedLength", "slideCount", "timings.totalMs", "timings.generateMs", "timings.repairMs",
@@ -56,23 +123,64 @@
           root.appendChild(item);
         }
       }
+      function startProgress() {
+        const progress = document.getElementById("progress");
+        const progressText = document.getElementById("progressText");
+        progressSec = 0;
+        progress.classList.remove("hidden");
+        progressText.textContent = "Processing... (0s)";
+        if (progressTimer) clearInterval(progressTimer);
+        progressTimer = setInterval(() => {
+          progressSec += 1;
+          progressText.textContent = `Processing... (${progressSec}s)`;
+        }, 1000);
+      }
+      function clearProgressLog() {
+        const progressLog = document.getElementById("progressLog");
+        progressLog.innerHTML = "";
+      }
+      function addProgressLog(msg) {
+        const progressLog = document.getElementById("progressLog");
+        const li = document.createElement("li");
+        li.textContent = msg;
+        progressLog.appendChild(li);
+      }
+      function stopProgress() {
+        const progress = document.getElementById("progress");
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+        progress.classList.add("hidden");
+      }
 
       async function onGenerate() {
         const input = document.getElementById("files");
+        const llmModelInput = document.getElementById("llmModelInput");
         const btn = document.getElementById("generate");
         const err = document.getElementById("error");
         const iframe = document.getElementById("preview");
         const download = document.getElementById("download");
+        const progressLogWrap = document.getElementById("progressLogWrap");
 
         err.textContent = "";
         btn.disabled = true;
+        llmModelInput.disabled = true;
+        startProgress();
+        clearProgressLog();
+        progressLogWrap.classList.remove("hidden");
         try {
+          addProgressLog(`Preparing request (model: ${llmModelInput.value || "gemini-3-flash-preview"})`);
           const form = new FormData();
           for (const f of input.files) form.append("documents", f);
+          addProgressLog(`Uploading ${input.files.length} file(s)`);
+          form.append("model", llmModelInput.value || "gemini-3-flash-preview");
 
+          addProgressLog("Calling /api/generate-llm");
           const res = await fetch("/api/generate-llm", { method: "POST", body: form });
           const json = await res.json();
           if (!res.ok) throw new Error(json.message || "Request failed");
+          addProgressLog("API response received");
 
           const variant = (json.htmlVariants && json.htmlVariants[0]) || {};
           const merged = {
@@ -88,6 +196,7 @@
             timings: variant.meta && variant.meta.timings,
             llmAttempts: variant.meta && variant.meta.llmAttempts ? JSON.stringify(variant.meta.llmAttempts) : "N/A",
           };
+          addProgressLog("Rendering metadata and preview");
           renderMeta(merged);
 
           iframe.srcdoc = json.html || "";
@@ -96,10 +205,14 @@
           if (blobUrl) URL.revokeObjectURL(blobUrl);
           blobUrl = URL.createObjectURL(blob);
           download.href = blobUrl;
+          addProgressLog("Done");
         } catch (e) {
           err.textContent = e.message;
+          addProgressLog(`Failed: ${e.message}`);
         } finally {
+          stopProgress();
           btn.disabled = false;
+          llmModelInput.disabled = false;
         }
       }
 
