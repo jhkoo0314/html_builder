@@ -1,215 +1,139 @@
-# RUM TODO (Based on `docs/RUN.md`)
+﻿# RUM TODO (Layer1 철회 반영)
 
-## 1) 구현계획 검토 결과
+본 문서는 `docs/RUN.md` 기준 실행 계획이다.
+운영 범위는 `launcher + layer2 + layer3`이며, L3는 Direct only로 진행한다.
 
-### 확정된 SSOT (그대로 준수)
-- Launcher 단일 진입점 + Boot-time spawn으로 `L1/L2/L3` 상시 실행
-- 레이어 간 코드/의존성 공유 금지 (import/require 금지, 각자 lockfile 유지)
-- L1 ↔ L3 연결 키는 `runId`(artifact protocol) 단일 기준
-- L3 From-run은 L1 산출물의 `outline` 중심 렌더
-- Launcher는 UI/API Gateway/Process Manager 역할만 수행
-- Launcher는 전역 추론 없이 레이어별 명시적 커맨드 맵을 사용
-- Layer2(stable) spawn 커맨드는 `npm.cmd start`로 고정
-- Health/Restart 고정값:
-  - `STARTUP_GRACE_MS=30000`
-  - 연속 health 실패 임계치 `N=3`
-  - unhealthy 지속 임계치 `X=10s`
-  - 재시작 정책: `5분 내 최대 5회`, exponential backoff base `500ms`
-- L2 health 원칙: `GET /healthz` 제공 (운영용, 비즈니스 로직 변경 없음)
-- L3는 L2(`v0.1.0-stable.1`) 기준 one-time file-level clone(COPY)로 시작 후 독립 진화
-  - 복제 이후 L2↔L3 코드 공유/상호 import/공용 패키지/공용 스크립트 금지
-  - 고도화(디자인/템플릿/렌더링 모드)는 L3에서만 구현
-  - 금지: workspace/shared module/git submodule/runtime dependency 기반 연동
-- From-L1 게이트: L1/L3 단독 DoD 통과 후에만 통합
-  - L1 artifacts 생성/편집 통과
-  - L3 direct build 통과
-  - launcher boot-time spawn + `/healthz` polling 통과
-  - L1/L3 `ARTIFACTS_ROOT` 주입값 일치 검증 통과
+## 1) 확정 사항 (SSOT)
+- launcher 단일 진입점 유지
+- Boot-time spawn 대상: `L2`, `L3`
+- L3 외부 UX: 1-step(업로드 -> 고급 덱 생성)
+- L3 내부 파이프라인: 2-step(`analyze -> render`)
+- From-L1 연계: 삭제(RFC 보류)
+- Layer2 동결 유지(`/healthz` 외 로직 변경 금지)
 
-### 리스크/주의점
-- “코드 복사도 금지” 제약으로 `/healthz`는 레이어별 독립 작성 필요
-- Windows 종료 처리에서 자식 프로세스 트리 정리가 불완전할 수 있음
-- `ARTIFACTS_ROOT` 경로 주입 불일치 시 L1→L3 연동 실패
-- Artifact 정적 서빙 시 path traversal 방어 누락 위험
-
----
-
-## 2) 상세 구현 계획 (Task Breakdown)
-
-## 실행 순서 재정의 (L1 우선 게이트)
-- [x] 재계획 원칙: **L1 기능 구현 완료 전 L3 기능 구현 착수 금지**
-- [ ] Gate-L1-Ready: 아래 4개가 모두 통과되어야 L3 기능 구현 시작 가능
-  - [ ] L1 analyze/save-outline 기능 구현 완료
-  - [ ] L1 기능 검증(정상/오류/아티팩트 저장) 통과
-  - [ ] launcher 경유 L1 실행 검증 통과
-  - [ ] 사용자 실제 실행 확인(acceptance) 완료
-
-## Phase 0. 기준선 고정
-- [x] P0-1. 환경변수 계약 문서화 (`docs/PHASE0_BASELINE.md`)
-- [x] P0-2. 포트/경로 SSOT 고정 (`5170~5173`, `ARTIFACTS_ROOT`)
-- [x] P0-3. 런처-레이어 API 매핑표 확정 (`/api/run/*` 프록시 타깃)
-- [x] P0-4. 레이어별 spawn 커맨드 맵 고정 문서화 (명시적 매핑)
-  - [x] L1: `npm.cmd start`
-  - [x] L2: `npm.cmd start` (고정)
-  - [x] L3: `npm.cmd start`
-- [x] P0-5. Health/Restart 상수 고정 (`30000`, `N=3`, `X=10s`, `5회/5분`, `500ms`)
-- [x] P0-6. L3 초기 생성 방식 고정 (L2 `v0.1.0-stable.1`에서 one-time COPY)
-- [x] P0-7. 복제 이후 독립성 규칙 문서화 (공유 금지 목록 명시)
-  - [x] 금지: workspace/shared module/git submodule/runtime dependency
-  - [x] 금지: L2↔L3 import/require, 공용 scripts/packages
+## 2) Phase별 진행 현황
+### Phase 0. 기준선/계약
+- [x] 포트/환경변수 기준 정리
+- [x] 런처-레이어 API 매핑 정리
+- [x] spawn command map 정리
 
 완료기준
-- [x] 모든 팀원이 동일한 env 키/포트/엔드포인트로 실행 가능
-- [x] L3 베이스라인 출처(태그/복제시점)가 문서에 추적 가능
+- [x] 팀 공통 실행 기준(포트/환경변수/API)이 문서로 고정되어 있다.
+- [x] launcher/L2/L3 실행 계약이 충돌 없이 정리되어 있다.
 
-## Phase 1. Launcher 프로세스 관리 뼈대
-- [x] P1-1. `processManager` 서비스 레지스트리 정의 (L1/L2/L3)
-- [x] P1-2. Boot-time 병렬 spawn 구현 (`cwd`, `env override`)
-- [x] P1-2a. per-layer command map 적용 (전역 dev/prod 추론 제거)
-- [x] P1-2b. L2는 항상 `npm.cmd start` 사용 강제
-- [x] P1-3. 상태 저장소 구현 (`starting/healthy/unhealthy/crashed/failed`)
-- [x] P1-4. graceful shutdown 구현 (`SIGTERM`→5s→`SIGKILL`)
-- [x] P1-5. stdout/stderr 수집 + `[L1|L2|L3]` prefix 로그 버퍼(최근 200줄)
+### Phase 1. Launcher 프로세스 관리
+- [x] 서비스 레지스트리(L2/L3) 정리
+- [x] Boot-time spawn 구현
+- [x] 상태 저장소(`starting/healthy/unhealthy/crashed/failed`) 반영
+- [x] graceful shutdown 반영
+- [x] 로그 prefix/버퍼링 반영
 
 완료기준
-- [x] Launcher 1회 실행으로 L1/L2/L3 프로세스가 모두 기동
-- [x] Ctrl+C 시 자식 프로세스가 종료됨
-- [x] 실행/의존성 관점에서 L2-L3 결합점이 없음(독립 실행 확인)
+- [x] launcher 1회 실행으로 L2/L3가 기동된다.
+- [x] 종료 신호 시 자식 프로세스가 정리된다.
+- [x] 상태/로그 조회가 운영에 필요한 수준으로 제공된다.
 
-## Phase 1.5. L3 Fork Baseline 검증
-- [x] P1.5-1. Layer3가 Layer2 `v0.1.0-stable.1` 기반 one-time copy인지 증적화
-- [x] P1.5-2. Layer2/L3 간 상호 import 경로 스캔(금지 규칙 위반 탐지)
-- [x] P1.5-3. package/script 공유 여부 점검 (락파일/스크립트 독립성 확인)
-- 실행 도구: `npm.cmd run verify:fork-baseline`
-- 증적 파일: `docs/L3_FORK_BASELINE_EVIDENCE.json`
-- 검증 리포트: `docs/PHASE1_5_REPORT.md`
-
-완료기준
-- [x] Layer3는 복제 후 독립 코드베이스로 운영됨
-
-## Phase 2. Health polling + auto-restart
-- [x] P2-1. 주기적 health check 구현 (`interval/timeout/startup grace`)
-- [x] P2-2. `N=3` 연속 실패 카운트 기반 `healthy→unhealthy` 전이
-- [x] P2-3. `exit`/`X=10s` 지속 unhealthy 트리거 재시작
-- [x] P2-4. 재시작 window 제한(`5분 내 5회`) + exponential backoff(base `500ms`) + jitter
-- [x] P2-5. `GET /api/status`, `GET /api/logs` 제공
+### Phase 2. Health polling + Auto-restart
+- [x] health polling 주기/타임아웃/그레이스 반영
+- [x] 실패 임계치 기반 상태 전이 반영
+- [x] exit/unhealthy 트리거 재시작 반영
+- [x] restart window/backoff/jitter 반영
+- [x] `/api/status`, `/api/logs` 제공
 
 완료기준
-- [x] 비정상 종료 또는 health 실패 시 자동 재시작 동작
-- [x] 재시도 한도 초과 시 `failed` 상태 전이 확인
+- [x] health 실패 시 상태 전이가 규칙대로 동작한다.
+- [x] 비정상 종료/지속 실패 시 자동 재시작이 동작한다.
+- [x] 재시작 한도 초과 시 `failed` 전이가 가능하다.
 
-## Phase 3. 레이어별 `/healthz` 표준화
-- [x] P3-1. L1 `/healthz` 구현 (service/version/ready/details 포함)
-- [x] P3-2. L2 `/healthz` 구현 (ops-only, 비즈니스 로직 비변경)
-- [x] P3-3. L3 `/healthz` 구현 (Direct/From-run mode 정보 포함)
-- [x] P3-4. 응답 스키마 필드 점검 (`ok, service, port, pid, uptimeMs, artifactsRoot`)
-
-완료기준
-- [x] 세 레이어 health 응답이 launcher polling과 정상 연동
-
-## Phase 4. API Gateway 프록시 연결
-- [x] P4-1. `POST /api/run/l1/analyze` 프록시
-- [x] P4-2. `POST /api/run/l2/build` 프록시
-- [x] P4-3. `POST /api/run/l3/build-direct` 프록시
-- [x] P4-4. `POST /api/run/l3/build-from-run` 프록시
-- [x] P4-5. 공통 오류 매핑(타임아웃/5xx/연결실패) 및 UI 친화 에러 포맷
+### Phase 3. Gateway/Health 정비
+- [x] `POST /api/run/l2/build` 프록시
+- [x] `POST /api/run/l3/build-direct` 프록시
+- [x] `GET /healthz` 연동 점검
+- [x] 공통 오류 매핑(타임아웃/연결 실패/5xx)
 
 완료기준
-- [x] UI는 launcher만 호출해 4개 액션을 모두 실행 가능
+- [x] launcher 경유로 L2/L3 실행 API가 호출된다.
+- [x] 업스트림 오류가 공통 포맷으로 반환된다.
 
-## Phase 5. Layer1 기능 구현/검증/사용자 실행 (우선)
-- [ ] P5A-1. `POST /api/l1/analyze` 실제 구현 (문서 입력 -> extract -> outline -> artifacts 저장)
-- [ ] P5A-2. `POST /api/l1/runs/:runId/save-outline` 실제 구현 (outline json/md 업데이트)
-- [ ] P5A-3. L1 artifacts 레이아웃 고정 저장 검증 (`manifest/source/extract/layer1`)
-- [ ] P5A-4. launcher 프록시 경유 L1 실행 E2E 검증
-- [ ] P5A-5. 사용자 실행 시나리오 검증 및 수용 확인
+### Phase 4. L3 UI 선행 완료
+- [x] Direct 전용 웹 UI 구현
+- [x] 서버 기동 후 UI/health/기본 호출 확인
 
 완료기준
-- [ ] L1 단독/launcher 경유 모두 성공
-- [ ] 사용자 관점 재현 절차 1회 이상 성공
-- [ ] Gate-L1-Ready 체크 완료
+- [x] `http://127.0.0.1:<L3_PORT>/`에서 Direct 실행 UI가 동작한다.
+- [x] health 상태와 결과 미리보기/다운로드가 노출된다.
 
-## Phase 6. Layer3 기능 구현 (Gate-L1-Ready 이후 착수)
-- [ ] P6-1. `POST /api/l3/build-direct` 실제 구현
-- [ ] P6-2. `POST /api/l3/build-from-run` 실제 구현
-- [ ] P6-3. L3 outputs 저장 (`layer3/deck.html`, `layer3/meta.json`)
-- [ ] P6-4. L1 runId 연동 검증 (from-run)
-- [ ] P6-5. From-L1 Gate 체크리스트 통과 후 통합 활성화
-  - [ ] L1 standalone DoD 통과 (artifacts 생성/편집)
-  - [ ] L3 standalone DoD 통과 (direct build)
-  - [ ] launcher spawn + `/healthz` polling DoD 통과
-  - [ ] L1/L3 `ARTIFACTS_ROOT` 주입값 일치 확인
+### Phase 5. L3 구현 (Analyze Cache + Render)
+- [ ] P5-1. Direct API 계약 확정
+- [ ] `POST /api/l3/build-direct` 요청/응답 스키마 고정
+- [ ] 오류코드 표준화(`INVALID_INPUT`, `NO_CONTENT`, `ANALYZE_FAILED`, `RENDER_FAILED`, `UPSTREAM_*`)
 
-완료기준
-- [ ] L3 direct/from-run 성공
-- [ ] L1 -> L3 연동 성공
-- [ ] Gate 통과 전에는 From-L1 통합 비활성 상태 유지
-- [ ] Gate 통과 후 L1 실행 결과 runId로 L3 from-run 성공
+- [ ] P5-2. analyze 구현 + 캐시 저장
+- [ ] analyze 결과를 `{runId}/layer3/analysis.json`으로 저장
+- [ ] analysis.json 스키마 검증(필수 필드 + evidenceHints)
+- [ ] analyze 실패 정책(MVP: 실패 반환) 적용
 
-## Phase 7. Artifact protocol + 정적 서빙
-- [ ] P7-1. Launcher `GET /artifacts/<runId>/...` 정적 서빙
-- [ ] P7-2. 보안 처리 (path traversal 차단, runId whitelist)
-- [ ] P7-3. 결과 파일 다운로드 링크 검증
+- [ ] P5-3. render 구현 (Tailwind templates + theme tokens)
+- [ ] analysis.json 입력 기반 템플릿 렌더
+- [ ] 테마 토큰(색/타이포/간격/반경/그림자) 적용
+- [ ] `{runId}/layer3/deck.html` 생성
 
-완료기준
-- [ ] 결과 파일 다운로드 링크가 정상 동작
+- [ ] P5-4. postprocess/guardrails
+- [ ] 가독성 규칙(폰트/대비/행간) 점검
+- [ ] 밀도 규칙(텍스트량/요소수) 점검
+- [ ] 구조 규칙(내비게이션/슬라이드 의미 단위) 점검
 
-## Phase 8. Launcher UI 구현
-- [ ] P8-1. 상단 상태바 (상태/포트/재시작횟수/lastHealth)
-- [ ] P8-2. 4개 모드 액션 UI (Analyze/Stable/Direct/From-run)
-- [ ] P8-3. 실행 결과 Run 카드 누적 렌더
-- [ ] P8-4. L1 결과 카드에서 “Build Advanced (From this runId)” 연결
-- [ ] P8-5. 로그 뷰어(선택) + 최근 200줄 표시
+- [ ] P5-5. 산출물/메타 저장 표준화
+- [ ] `{runId}/layer3/meta.json` 저장
+- [ ] 타이밍 필드 `analyzeMs`, `renderMs`, `totalMs` 기록
+- [ ] 실패 시에도 `analysis.json` 보존(특히 render 실패)
 
 완료기준
-- [ ] 모드 선택→실행→결과/다운로드까지 launcher UI 단독으로 완결
+- [ ] direct 실행 시 `analysis.json -> deck.html` 2-step이 동일 runId에서 수행된다.
+- [ ] L3 산출물 3종(`analysis.json`, `deck.html`, `meta.json`)이 규격대로 저장된다.
+- [ ] render 재실행 시 analysis 캐시 재사용이 가능하다.
+- [ ] L2 경로/결과에 영향이 없다.
 
-## Phase 9. LauncherMeta 정규화
-- [ ] P9-1. 레이어 raw 응답 수집 및 `rawMeta` 보존
-- [ ] P9-2. `launcher-meta-v0.2` 정규화 모듈 구현
-- [ ] P9-3. metrics/timings/llm 필드 없을 때 안전 렌더 처리
-- [ ] P9-4. `SUCCESS|FALLBACK|FAILED` 판정 규칙 정리
+검증내용
+- [ ] 기능: direct 샘플 3건 이상 생성 성공
+- [ ] 캐시 재사용: 동일 runId에서 render-only 재실행 성공
+- [ ] 메타 검증: `analyzeMs`, `renderMs`, `totalMs` 누락 없음
+- [ ] 무영향성: `POST /api/run/l2/build` 정상 동작 유지
+
+### Phase 6. 회귀 검증 (Phase 5 완료 후)
+- [ ] launcher 경유 L2 build E2E 검증
+- [ ] launcher 경유 L3 direct E2E 검증
+- [ ] 장애 시나리오(강제 종료/헬스 실패) 검증
 
 완료기준
-- [ ] 서로 다른 레이어 응답도 동일한 UI 카드 스키마로 렌더
+- [ ] L2/L3 주요 실행 경로가 launcher 경유로 재현 가능하다.
+- [ ] 정상/실패 케이스에서 응답/로그/산출물이 기대대로 남는다.
+- [ ] 재시작 정책이 한도/백오프 규칙대로 동작한다.
 
-## Phase 10. 통합 검증/릴리스 체크
-- [ ] P10-1. DoD 시나리오 테스트 스크립트화
-- [ ] P10-2. 장애 시나리오 테스트 (강제 kill, health timeout, restart limit)
-- [ ] P10-3. 문서 동기화 (`RUN.md`, runbook, env 예시, known issues)
-- [ ] P10-4. 최종 수용 점검표 작성
+검증내용
+- [ ] `GET /api/status`, `GET /api/logs?service=L2|L3`, `GET /healthz` 확인
+- [ ] `POST /api/run/l2/build` 정상/실패 케이스 확인
+- [ ] `POST /api/run/l3/build-direct` 정상/실패 케이스 확인
+- [ ] `UPSTREAM_TIMEOUT`, `UPSTREAM_UNREACHABLE` 오류 포맷 확인
+
+### Phase 7. 문서/운영 정리
+- [ ] launcher UI 결과 카드에 `analysis.json` 링크 노출 반영 문서화
+- [ ] artifacts/runbook/known issues 동기화
+- [ ] L1 관련 잔여 문구 정리 완료
 
 완료기준
-- [ ] RUN.md의 DoD 항목 전부 통과
+- [ ] 문서 세트가 L3 analyze/render SSOT와 일치한다.
+- [ ] 운영자가 문서만으로 실행/장애대응 가능하다.
 
----
+검증내용
+- [ ] 문서 검색: `rg -n "layer1|/api/l1|L1_PORT|build-from-run" docs launcher layer3-advanced/docs`
+- [ ] 잔여 결과가 철회/보류 안내 외에는 0건인지 확인
 
-## 3) 우선순위 (실행 순서)
-1. Phase 0~2 (런처 생명주기 안정화)
-2. Phase 3~4 (health + 프록시 연결)
-3. **Phase 5 (L1 구현/검증/사용자 실행)**
-4. **Gate-L1-Ready 통과**
-5. Phase 6 (L3 구현)
-6. Phase 7~9 (artifact/UI/메타 통합)
-7. Phase 10 (통합 검증 및 문서화)
+## 3) 우선순위
+1. Phase 5 L3 구현(Analyze Cache + Render)
+2. Phase 6 E2E 회귀 검증
+3. Phase 7 문서 정리
 
-## 4) 최소 마일스톤
-- M1: Launcher 기동/상태/재시작까지 동작 (UI 상태바 포함)
-- M2: 4개 모드 프록시와 runId 연동 동작
-- M3: **L1 기능 완성 + 사용자 실행 검증 완료(Gate-L1-Ready)**
-- M4: L3 기능 완성(direct/from-run)
-- M5: 결과 카드/다운로드/메타 정규화 완성
-- M6: DoD 전체 통과
-
-## 5) SSOT 운영 상수(고정)
-- Spawn command map: per-layer explicit map 사용
-- L2 spawn command: `npm.cmd start`
-- `STARTUP_GRACE_MS=30000`
-- Health failure threshold: `N=3`
-- Unhealthy sustain threshold: `X=10s`
-- Restart policy: `5 attempts / 5 minutes`, backoff base `500ms`
-- L2 health endpoint: `GET /healthz` (ops-only)
-- L3 baseline: Layer2 `v0.1.0-stable.1` one-time file-level COPY
-- Post-clone policy: no shared code/imports/packages/scripts between L2 and L3
-- Clone mechanism constraints: not workspace, not shared module, not git submodule import path, not runtime dependency
-- From-L1 integration gate: standalone DoD 통과 이후 활성화
+## 4) 메모
+- From-L1 연결은 RFC 보류 상태로 유지한다.
+- Layer1 재도입 필요 시 신규 RFC 승인 후 범위를 다시 연다.

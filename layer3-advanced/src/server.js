@@ -62,7 +62,7 @@ app.get("/healthz", (req, res) => {
     details: {
       hasApiKey: Boolean(process.env.GEMINI_API_KEY),
       llmEnabled: true,
-      mode: "direct|from-run",
+      mode: "direct",
       reason: readiness.reason,
     },
   });

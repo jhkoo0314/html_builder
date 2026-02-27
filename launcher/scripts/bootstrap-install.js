@@ -4,7 +4,7 @@ const { spawnSync } = require("child_process");
 const path = require("path");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-const targets = ["launcher", "layer1-report2text", "layer2-stable", "layer3-advanced"];
+const targets = ["launcher", "layer2-stable", "layer3-advanced"];
 
 for (const target of targets) {
   const cwd = path.join(repoRoot, target);
@@ -18,4 +18,3 @@ for (const target of targets) {
     process.exit(result.status || 1);
   }
 }
-

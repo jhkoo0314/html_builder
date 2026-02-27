@@ -78,18 +78,8 @@ async function proxyPost(req, res, options) {
 }
 
 function createProxyRoutes(config) {
-  const { l1Port, l2Port, l3Port, proxyTimeoutMs = 180000 } = config;
+  const { l2Port, l3Port, proxyTimeoutMs = 180000 } = config;
   const router = express.Router();
-
-  router.post("/run/l1/analyze", async (req, res) => {
-    await proxyPost(req, res, {
-      host: "127.0.0.1",
-      port: l1Port,
-      path: "/api/l1/analyze",
-      timeoutMs: proxyTimeoutMs,
-      target: "L1 /api/l1/analyze",
-    });
-  });
 
   router.post("/run/l2/build", async (req, res) => {
     await proxyPost(req, res, {
@@ -108,16 +98,6 @@ function createProxyRoutes(config) {
       path: "/api/l3/build-direct",
       timeoutMs: proxyTimeoutMs,
       target: "L3 /api/l3/build-direct",
-    });
-  });
-
-  router.post("/run/l3/build-from-run", async (req, res) => {
-    await proxyPost(req, res, {
-      host: "127.0.0.1",
-      port: l3Port,
-      path: "/api/l3/build-from-run",
-      timeoutMs: proxyTimeoutMs,
-      target: "L3 /api/l3/build-from-run",
     });
   });
 

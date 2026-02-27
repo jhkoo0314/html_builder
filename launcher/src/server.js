@@ -32,14 +32,6 @@ if (!fs.existsSync(artifactsRoot)) {
 
 const services = [
   {
-    key: "L1",
-    label: "L1",
-    cwd: process.env.L1_DIR || path.join(repoRoot, "layer1-report2text"),
-    port: intEnv("L1_PORT", 5171),
-    command: "npm.cmd",
-    args: ["start"],
-  },
-  {
     key: "L2",
     label: "L2",
     cwd: process.env.L2_DIR || path.join(repoRoot, "layer2-stable"),
@@ -98,10 +90,10 @@ app.get("/api/status", (req, res) => {
 
 app.get("/api/logs", (req, res) => {
   const service = String(req.query.service || "").toUpperCase();
-  if (!["L1", "L2", "L3"].includes(service)) {
+  if (!["L2", "L3"].includes(service)) {
     return res.status(400).json({
       ok: false,
-      error: "Invalid service. Use one of: L1, L2, L3",
+      error: "Invalid service. Use one of: L2, L3",
     });
   }
   return res.json({
@@ -114,7 +106,6 @@ app.get("/api/logs", (req, res) => {
 app.use(
   "/api",
   createProxyRoutes({
-    l1Port: intEnv("L1_PORT", 5171),
     l2Port: intEnv("L2_PORT", 5172),
     l3Port: intEnv("L3_PORT", 5173),
     proxyTimeoutMs,

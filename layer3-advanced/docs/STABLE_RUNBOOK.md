@@ -1,133 +1,46 @@
-﻿# RUNBOOK.md
+﻿# L3 Advanced Runbook
 
-`v0.1.0-stable.1` 기준 장애 대응 런북.
-목표: 재현 -> 원인 분류 -> 조치 완료를 10분 내 수행.
+Layer3 Advanced 운영 런북.
+현재 SSOT는 Direct only + 내부 2-step(`analyze -> render`)이다.
 
-## 0) 공통 확인
-
-1. 서버 상태 확인
+## 0) 기본 점검
+1. 서버 헬스
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:5173/healthz
+```
+2. launcher 경유 상태
+```bash
+curl http://localhost:5170/api/status
 ```
 
-2. 네트워크 진단
-```bash
-curl http://localhost:3000/api/network-diagnostics
-```
+## 1) 실행 경로
+1. `POST /api/run/l3/build-direct` 호출
+2. 내부 analyze 수행 -> `analysis.json` 저장
+3. 내부 render 수행 -> `deck.html` 저장
+4. `meta.json`에 타이밍/오류 정보 저장
 
-3. 메타 확인
-```bash
-curl -s -X POST "http://localhost:3000/api/generate-llm" \
-  -F "documents=@./samples/report.txt" \
-| jq '{mode, whyFallback: .htmlVariants[0].whyFallback, renderMode: .htmlVariants[0].renderMode, slideCount: .htmlVariants[0].meta.slideCount, llmAttempts: .htmlVariants[0].meta.llmAttempts, timings: .htmlVariants[0].meta.timings}'
-```
+## 2) Artifacts 확인
+- `{ARTIFACTS_ROOT}/{runId}/layer3/analysis.json`
+- `{ARTIFACTS_ROOT}/{runId}/layer3/deck.html`
+- `{ARTIFACTS_ROOT}/{runId}/layer3/meta.json`
 
-## 1) 증상 / 원인 / 조치
+검증 포인트:
+- `analysis.json` 스키마 필수 필드 존재
+- `meta.json`에 `analyzeMs`, `renderMs`, `totalMs` 존재
+- render 실패 시 `analysis.json`이 보존되어야 함
 
+## 3) 장애 분류/즉시 조치
 | 증상 | 가능한 원인 | 즉시 조치 |
 |---|---|---|
-| `LLM_NETWORK_ERROR` (`fetch failed`, `EACCES`) | DNS/프록시/방화벽/443 차단 | `/api/network-diagnostics` 실행 -> DNS/443 확인 -> 프록시 변수 점검 |
-| DNS timeout (`ETIMEDOUT`, `ENOTFOUND`) | 로컬 DNS 불안정, 공유기 DNS 문제 | DNS를 1.1.1.1/8.8.8.8로 변경 후 재시도 |
-| `LLM_OVERLOADED` (503 high demand) | 공급측 일시 부하 | 30~120초 후 재시도, 실패 반복 시 시간대 변경 |
-| `LLM_TIMEOUT` | 입력 과대, 예산 소진, 응답 지연 | 입력 길이 축소, 재시도, timings/attempt timeout 확인 |
-| `NO_SLIDES` (`llmAttempts.ok=true`) | 생성은 성공했지만 구조 검증 실패 | `section.slide` 존재/최소 2장/repair 결과 확인 |
-| 한글 깨짐(콘솔 출력만) | PowerShell 코드페이지/인코딩 불일치 | 콘솔 UTF-8 전환 후 재실행, 파일 UTF-8 점검 |
+| `ANALYZE_FAILED` | 입력 품질 낮음, 파서 실패, 스키마 검증 실패 | 입력 축소/정상 파일로 재시도, warnings 확인 |
+| `RENDER_FAILED` | 템플릿 에러, 토큰 누락, 후처리 실패 | analysis 유지 확인 후 render 재실행 |
+| `UPSTREAM_TIMEOUT` | 업스트림 지연 | 타임아웃/재시도 정책 확인 후 재호출 |
+| `UPSTREAM_UNREACHABLE` | 서비스 미기동/포트 충돌 | health/status로 프로세스 상태 점검 |
 
-## 2) 케이스별 실행 명령
+## 4) 캐시 재사용 검증
+- 동일 `runId`에서 analyze 재실행 없이 render만 재실행 가능해야 한다.
+- 재실행 후 `deck.html` 갱신, `analysis.json` 동일성, `meta.json` 타이밍 갱신 확인.
 
-### A. LLM_NETWORK_ERROR (fetch failed/EACCES)
-목적: 네트워크 계층 이상 여부 확인.
-
-```powershell
-curl http://localhost:3000/api/network-diagnostics
-nslookup generativelanguage.googleapis.com
-Resolve-DnsName generativelanguage.googleapis.com
-Test-NetConnection generativelanguage.googleapis.com -Port 443
-curl -I https://generativelanguage.googleapis.com/
-```
-
-성공 기준:
-- DNS 조회 성공
-- 443 연결 성공
-- HTTPS 헤더 응답 수신
-
-### B. DNS timeout
-목적: DNS 문제를 빠르게 분리한다.
-
-조치:
-1. 어댑터 DNS를 `1.1.1.1`, `8.8.8.8`로 설정
-2. 공유기 DNS 캐시/설정 확인
-3. 재부팅 후 다시 진단
-
-검증 명령:
-```powershell
-ipconfig /flushdns
-nslookup generativelanguage.googleapis.com
-Test-NetConnection generativelanguage.googleapis.com -Port 443
-```
-
-### C. 503 high demand
-목적: 공급측 부하 상황에서 불필요한 변경 없이 회복한다.
-
-조치:
-1. 즉시 코드 변경하지 않는다.
-2. 30~120초 간격으로 재시도한다.
-3. 여러 건 연속 실패 시 다른 시간대 실행.
-
-확인:
-- `llmAttempts[].reasonCode == "LLM_OVERLOADED"`
-
-### D. LLM_TIMEOUT
-목적: 시간/예산 초과 원인을 분류한다.
-
-확인 포인트:
-- `timings.generateMs`
-- `llmAttempts[].timeoutMs`
-- `llmBudgetMs`, `llmAttemptTimeoutMs`
-
-조치:
-1. 입력 문서 길이 축소(불필요 부록 제거)
-2. 동일 입력 1회 재시도
-3. 네트워크 지연 병행 점검
-
-### E. NO_SLIDES (ok=true)
-목적: 생성 성공 후 구조 검증 실패를 분리한다.
-
-확인 포인트:
-- `mode=fallback-rule-based`
-- `whyFallback=NO_SLIDES`
-- `llmAttempts[0].ok=true` 여부
-- 최종 HTML에 `section.slide` 존재 여부
-
-조치:
-1. 구조 계약 점검: 최소 2장, `section.slide` 필수
-2. repair 경로 소요시간/효과 확인 (`timings.repairMs`)
-3. 최근 프롬프트/후처리 스몰패치 영향 검토
-
-### F. 한글 깨짐(콘솔만)
-목적: 파일 손상 없이 콘솔 표시 문제만 분리한다.
-
-```powershell
-chcp 65001
-$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-Get-Content .\README.md
-```
-
-성공 기준:
-- 파일은 정상 UTF-8, 콘솔 표시만 복구됨
-
-## 3) 10분 대응 체크리스트
-
-1. `health`와 `network-diagnostics` 확인
-2. `generate-llm` 1회 호출 후 meta 추출
-3. `whyFallback` 코드로 케이스 분류
-4. 해당 케이스 실행 명령 수행
-5. 동일 입력 재호출로 회복 확인
-
-## 4) 에스컬레이션 기준
-
-아래 중 하나면 운영 이슈로 승격:
-- 503이 10분 이상 지속
-- DNS/443 모두 정상인데 `LLM_NETWORK_ERROR` 반복
-- 동일 입력에서 `NO_SLIDES`가 연속 재현
-- 키/권한 문제(`LLM_AUTH_ERROR`)가 즉시 해소되지 않음
+## 5) 무영향성 검증 (L2)
+- L3 변경 후에도 `POST /api/run/l2/build` 정상 동작해야 한다.
+- 장애 대응 중 L2 설정/로직 변경 금지.

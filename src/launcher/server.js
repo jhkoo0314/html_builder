@@ -22,14 +22,6 @@ if (!fs.existsSync(artifactsRoot)) {
 
 const services = [
   {
-    key: "L1",
-    label: "L1",
-    cwd: process.env.L1_DIR || path.join(repoRoot, "layer1-report2text"),
-    port: intEnv("L1_PORT", 5171),
-    command: "npm.cmd",
-    args: ["run", "dev"],
-  },
-  {
     key: "L2",
     label: "L2",
     cwd: process.env.L2_DIR || path.join(repoRoot, "layer2-stable"),
@@ -73,10 +65,10 @@ app.get("/api/status", (req, res) => {
 
 app.get("/api/logs", (req, res) => {
   const service = String(req.query.service || "").toUpperCase();
-  if (!["L1", "L2", "L3"].includes(service)) {
+  if (!["L2", "L3"].includes(service)) {
     return res.status(400).json({
       ok: false,
-      error: "Invalid service. Use one of: L1, L2, L3",
+      error: "Invalid service. Use one of: L2, L3",
     });
   }
   return res.json({
@@ -118,4 +110,3 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   shutdown("SIGTERM");
 });
-
