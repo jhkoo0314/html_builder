@@ -1,245 +1,487 @@
-좋아요. 네 답변 기준으로 **“Layer2(안정화)는 절대 불변”**을 전제로, **Layer1/Layer3를 독립 실행 가능한 제품처럼 분리**하면서도 **Layer1 UI에서 전체 플로우를 오케스트레이션**하는 형태로 초기 기획안을 내려줄게요. (Tailwind CDN 1차, Web UI 편집만, L3 From L1 MVP에서 LLM polish 비활성)
+아래는 너의 최종 결정(✅  **Boot-time spawn: 항상 L1/L2/L3 3개 서버 상시 실행** , ✅  **L3 From L1 = outline 중심 코드 렌더** , ✅  **연결 = artifact_id(runId) 방식** , ✅  **UI는 Launcher 단일 UI에서 모드 선택** )을 모두 반영한 **PRD v0.2 (Final)** 입니다.
+
+요구사항을 다시 SSOT로 고정합니다:
+
+* **각 Layer는 완전히 격리된 독립 폴더/독립 파일/독립 의존성**을 가진다.
+* **레이어 간 import/require 금지** , 공용 패키지/워크스페이스 공유 금지.
+* 사용자는 **Launcher 하나만 실행**한다.
+* Launcher는  **부팅 시 L1/L2/L3 서버를 항상 띄운다(Boot-time spawn)** .
+* Launcher는 UI + API Gateway + Process Manager 역할만 하며, 레이어 코드를 import하지 않는다.
+* **Layer2는 안정화 버전으로서 기능 로직 변경은 금지** (단, /healthz 같은 운영용 엔드포인트는 “동작을 바꾸지 않는 최소 추가”로만 허용 범위에 포함시키는 것으로 본 PRD에서는 정의한다.  *추가도 절대 싫다면, 아래 /healthz의 Layer2 구현을 “GET /로 대체” 옵션으로 바꿀 수 있음* ).
+* **[SSOT: Layer3 is a fork/clone of Layer2 (one-time copy), then diverges]**
+  * Layer3는 안정화 태그 `v0.1.0-stable.1` 기준 Layer2를 **파일 단위 1회 복제(COPY)** 하여 생성한다.
+  * 복제 이후 Layer3는 독립 진화한다. Layer2와 **코드 공유/상호 import/공용 패키지/공용 스크립트**를 금지한다.
+  * 디자인/템플릿/렌더링 모드 개선은 Layer3에만 반영한다. Layer2는 본 PRD의 명시적 운영용 예외(예: `GET /healthz`) 외 기능 로직을 동결 유지한다.
+  * 복제 메커니즘은 **COPY only** 이며 workspace/shared module/git submodule/runtime dependency 방식은 금지한다.
 
 ---
 
-# 1) 제품 개념 설계
+# PRD v0.2 (Final)
 
-## 레이어별 역할
+## 1. 제품 개요
 
-### Layer1: Report2Text
+### 목표
 
-* **입력** : PDF/DOCX/TXT
-* **출력** : `docs` (사용자가 편집 가능한 슬라이드 설계도 + 요약)
-* **목적** : 문서 내용을 “슬라이드 단위 의미 구조(Outline)”로 정리하고, 사용자가 편집/다운로드/고급 빌드 연결을 할 수 있게 함.
+문서 기반 프레젠테이션 생성 시스템을 **3개 레이어(L1/L2/L3)**로 격리하고, **Launcher 단일 UI**에서 모드를 선택하여 실행한다.
 
-### Layer2: Stable HTML (동결)
-
-* **입력** : 원문
-* **출력** : 안정화 HTML 슬라이드
-* **정책** : 현재 stable.1 그대로 동작(코드/동작/예산/검증/후처리 포함)
-* **원칙** : “절대 수정하지 않음”. 문제가 생기면 Layer3에서 해결.
-
-### Layer3: Advanced HTML
-
-* **두 경로 지원(사용자 선택)**
-  1. **Direct 업로드 → LLM HTML 직접 생성** (자유도 높임, 최소 제약)
-  2. **From Layer1 → docs + 원문(본문) 동시 전달 → 고급 HTML 렌더**
-     * MVP:  **LLM polish 비활성** , 하지만 “본문도 같이 전달/저장”해 맥락을 유지 (향후 옵션/확장 대비)
-* **1차 목표** : L2 기반에서  **더 예쁘고 현대적인 디자인** (Tailwind CDN + 미리 준비된 컴포넌트/레이아웃)
-* **2차 목표** : 발표 대상별 컨셉/테마(추후)
+* **L1 Report2Text** : 문서 분석 → `outline.md + outline.json + extract.txt` 생성 및 웹 편집
+* **L2 Stable** : 안정화 HTML 생성(동결 유지)
+* **L3 Advanced** :
+* **Direct** : 문서 업로드 → LLM HTML 직접 생성(디자인 고도화)
+* **From L1** : runId 기반으로 artifacts 읽기 → **outline 중심 코드 렌더(Tailwind CDN)**
 
 ---
 
-# 2) 독립 실행 + 연결이 동시에 가능한 운영 구조
+## 2. 핵심 원칙(강제)
 
-요구사항 “각 레이어 독립 실행”을 지키면서, 유저 플로우는 Layer1에서 이어지게 하려면 아래가 가장 안전합니다.
+### 2.1 격리(Isolation)
 
-## 권장: “3개 서버 + Layer1이 메인 UI”
+* 레이어 간 코드 공유 금지:
+  * `layer1`이 `layer2`/`layer3` 코드를 import/require 금지
+  * `layer3`가 `layer1`/`layer2` 코드를 import/require 금지
+  * `launcher`는 어떠한 레이어 코드도 import/require 금지
+* 의존성 공유 금지:
+  * 각 폴더가 **자기 package.json / package-lock.json** 보유
+  * 루트 workspace/monorepo 공유 설치 금지(공유 node_modules 금지)
+* 파일 규칙 공유 금지:
+  * 각 layer는 artifacts 생성/저장도 **자기 구현**으로 수행(단, 경로/레이아웃은 프로토콜로 합의)
 
-* Layer1 서버(메인 UI 포함): `http://localhost:5171`
-* Layer2 stable 서버: `http://localhost:5172`
-* Layer3 advanced 서버: `http://localhost:5173`
+### 2.2 단일 진입점(Single Entry UX)
 
-### 독립성
+* 사용자는 `launcher`만 실행한다.
+* Launcher는 부팅 시 **항상** L1/L2/L3 서버를 띄운다(Boot-time spawn).
+* UI는 launcher에서만 제공(레이어 UI는 “있어도 되지만” 운영 UX에서는 사용하지 않음).
 
-* 각 레이어는 자기 서버만으로 단독 실행 가능
-* Layer1은 Layer2/Layer3이 꺼져 있어도 분석/다운로드까지는 가능
+### 2.3 L2→L3 복제 및 독립 진화(Fork-by-copy)
 
-### 연결
-
-* Layer1 UI에서 “Build Stable / Build Advanced” 버튼 누르면 각 서버 API 호출
-* 로컬 개발자용이므로 CORS는 간단히 허용(또는 동일 origin 프록시)
+* Layer3 초기 베이스라인은 Layer2(`v0.1.0-stable.1`)에서 1회 복제한 코드다.
+* 이후 Layer2와 Layer3 사이의 코드/의존성/스크립트 공유를 금지한다.
+* Layer2 변경은 운영용 엔드포인트 수준 최소 변경만 허용하고, 기능 고도화는 Layer3에서만 수행한다.
 
 ---
 
-# 3) Artifact(산출물) 중심 설계: 레이어 간 전달을 ‘파일’로 SSOT화
-
-“원문 + 설계도”를 Layer3로 넘겨야 한다는 요구는  **브라우저에서 대용량 payload로 넘기지 말고** , 로컬 아티팩트로 SSOT화하는 게 안정적입니다.
-
-## 아티팩트 디렉토리 (로컬 전용)
-
-* `./.artifacts/{runId}/`
-
-구성 예시:
+## 3. 리포지토리/폴더 구조(최종)
 
 ```text
-.artifacts/2026-02-27_153012_abcd/
-  source/
-    original.pdf
-  extract/
-    extracted.txt
-    extract.meta.json
-  layer1/
-    outline.md
-    outline.json
-    layer1.meta.json
-  layer2/
-    deck.html
-    meta.json
-  layer3/
-    deck.html
-    meta.json
+repo-root/
+  launcher/                         # 단일 진입점(UI+Gateway+ProcessManager)
+    package.json
+    package-lock.json
+    .env.example
+    README.md
+    src/
+      server.js                     # Express: UI 제공 + /api/* gateway
+      processManager.js             # Boot-time spawn + health polling + restart + shutdown
+      proxyRoutes.js                # API 라우팅(모드별)
+      statusStore.js                # 프로세스 상태/헬스/재시작 카운트 메모리 저장
+    public/
+      index.html                    # 모드 선택 UI + 결과/메타 표시
+      app.js                        # (선택) UI 스크립트
+      styles.css                    # (선택)
+    scripts/
+      bootstrap-install.js          # (선택) 각 레이어 npm install 자동 실행(공유 설치 아님)
+  layer1-report2text/
+    package.json
+    package-lock.json
+    .env.example
+    README.md
+    src/
+      server.js
+      api/
+      parsers/
+      llm/                          # (L1이 LLM을 쓰면 여기에)
+      artifacts/
+    public/                         # (선택) L1 단독 UI. 운영에서는 launcher UI 사용.
+    scripts/
+    docs/
+  layer2-stable/
+    (v0.1.0-stable.1 기반. 기능 로직 동결)
+    package.json
+    package-lock.json
+    .env.example
+    README.md
+    src/
+      server.js
+      api/
+      pipelines/
+      parsers/
+      llm/
+      html/
+      diagnostics/
+    public/
+    scripts/
+    docs/
+  layer3-advanced/
+    package.json
+    package-lock.json
+    .env.example
+    README.md
+    src/
+      server.js
+      api/
+      llm/                          # Direct 모드용
+      render/                       # From L1 코드 렌더(templates)
+      artifacts/
+    public/                         # (선택) L3 단독 UI. 운영에서는 launcher UI 사용.
+    scripts/
+    docs/
+  PRD_v0.2_FINAL.md
 ```
-
-**핵심 포인트**
-
-* Layer1이 `runId` 생성 → 원문/추출텍스트/outline 저장
-* Layer3 From L1은 `runId`만 받으면 **원문 + 추출텍스트 + outline**를 모두 읽어 맥락 유지 가능
 
 ---
 
-# 4) 데이터 계약: Layer1 docs 포맷 정의 (MVP)
+## 4. 포트/환경변수(Launcher가 SSOT)
 
-사용자는 웹 UI에서만 편집, 다운로드는 docs.
-→ 사람이 보기 좋고 편집하기 쉬운 **MD**를 주력으로, 파이프라인 안정성을 위해 **JSON sidecar**를 함께 저장/다운로드하는 걸 추천합니다(로컬 개발자용이라 부담 없음).
+### 4.1 고정 포트(기본값)
 
-## outline.md (사람용, 다운로드 기본)
+* Launcher: `5170`
+* Layer1: `5171`
+* Layer2: `5172`
+* Layer3: `5173`
 
-* 예: `# Title`, `## Slide 1`, `- bullet` …
+### 4.2 launcher/.env.example (권장)
 
-## outline.json (기계용, L3 렌더 SSOT)
+* `LAUNCHER_PORT=5170`
+* `L1_PORT=5171`
+* `L2_PORT=5172`
+* `L3_PORT=5173`
+* `ARTIFACTS_ROOT=<repo-root>/.artifacts` (절대경로 권장)
+* `HEALTH_CHECK_INTERVAL_MS=2000`
+* `HEALTH_CHECK_TIMEOUT_MS=800`
+* `HEALTH_CHECK_STARTUP_GRACE_MS=30000`
+* `RESTART_MAX_ATTEMPTS=5`
+* `RESTART_WINDOW_MS=300000` (5분)
+* `RESTART_BACKOFF_BASE_MS=500`
 
-최소 스키마:
+### 4.3 각 레이어 .env.example (독립)
+
+* `PORT=<각 레이어 포트>`
+* `ARTIFACTS_ROOT=<launcher와 동일한 경로>` ← **L1과 L3는 반드시 동일**
+* L2/L3 Direct가 LLM 사용 시:
+  * `GEMINI_API_KEY=...` 등(레이어별로 독립 파일에서 로드)
+
+> Launcher는 spawn 시 `PORT`와 `ARTIFACTS_ROOT`를 **강제 주입**한다(override).
+> 키/기타 옵션은 각 레이어가 자기 `.env`에서 로드(launcher가 간섭하지 않음).
+
+---
+
+## 5. Launcher ProcessManager 동작 규칙(필수)
+
+### 5.1 Boot-time spawn (항상 3개 실행)
+
+Launcher 시작 시 즉시 아래를 수행:
+
+1. `layer1-report2text` 서버 spawn
+2. `layer2-stable` 서버 spawn
+3. `layer3-advanced` 서버 spawn
+   → 병렬로 실행 가능(권장)
+
+Spawn 방식:
+
+* Node `child_process.spawn()` 사용
+* `cwd`: 해당 레이어 폴더
+* `env`:
+  * 기존 process.env + 레이어별 `PORT`, `ARTIFACTS_ROOT`
+* 실행 커맨드(레이어별 독립):
+  * 기본: `npm run dev`
+  * 운영: `npm start`
+  * Launcher는 레이어의 scripts 이름을 “문서로” 알고 있을 뿐, 코드로 공유하지 않음.
+
+### 5.2 Health check (표준)
+
+* Launcher는 각 레이어에 대해 다음 URL로 주기적 체크:
+  * `http://127.0.0.1:<PORT>/healthz`
+* 체크 주기: `HEALTH_CHECK_INTERVAL_MS` (기본 2초)
+* 타임아웃: `HEALTH_CHECK_TIMEOUT_MS` (기본 800ms)
+* startup grace: `HEALTH_CHECK_STARTUP_GRACE_MS` (기본 30s)
+  * grace 동안은 헬스 실패해도 “starting” 상태로 유지
+
+### 5.3 상태 머신(launcher 내부)
+
+* `starting` → (health ok) → `healthy`
+* `healthy` → (연속 실패 N회, 기본 3회) → `unhealthy`
+* `unhealthy` → (자동 재시작 성공) → `healthy`
+* 프로세스 종료 감지(exit) → `crashed`
+
+### 5.4 자동 재시작(Auto restart)
+
+재시작 트리거:
+
+* child process `exit` 이벤트 발생(비정상 종료)
+* 또는 `unhealthy` 상태가 `X초` 이상 지속(기본 10초)
+
+재시작 정책:
+
+* window 내 최대 재시작 횟수 제한
+  * `RESTART_WINDOW_MS` 내 `RESTART_MAX_ATTEMPTS` 초과 시 `failed` 상태로 전환
+* backoff:
+  * `delay = RESTART_BACKOFF_BASE_MS * 2^(attempt-1) + jitter(0~250ms)`
+* 재시작 시:
+  * 기존 프로세스가 남아있으면 종료 시도 후 재spawn
+  * 재spawn 후 startup grace 적용
+
+### 5.5 종료(Shutdown) 규칙
+
+Launcher 종료(SIGINT/SIGTERM) 시:
+
+1. 모든 child에 `SIGTERM` 전송
+2. `5000ms` 대기
+3. 아직 살아있으면 `SIGKILL` (Windows에서는 가능한 범위에서 process.kill, 필요 시 tree-kill 대응은 추후)
+4. Launcher 종료
+
+### 5.6 로그 스트리밍(운영 필수)
+
+* child stdout/stderr를 launcher가 수집
+* 각 라인에 prefix 부여:
+  * `[L1] ...`
+  * `[L2] ...`
+  * `[L3] ...`
+* UI에서 “최근 200줄 보기” 가능(선택)
+
+---
+
+## 6. /healthz 표준(레이어별 개별 구현, 공유 코드 없음)
+
+각 레이어는 **독립적으로** `/healthz`를 구현한다. (코드 복사도 금지, 각자 작성)
+
+### 6.1 요청/응답
+
+* `GET /healthz`
+* 응답 status: `200` (정상), `503` (비정상/준비 안됨)
+
+#### 응답 JSON 스키마(표준)
 
 ```json
 {
-  "version": "r2t-0.1",
-  "title": "…",
-  "summary": "…",
-  "slides": [
-    {
-      "id": "s1",
-      "title": "…",
-      "bullets": ["…", "…"],
-      "notes": "",
-      "layoutHint": "title|two-col|kpi|table|timeline|quote"
-    }
-  ]
+  "ok": true,
+  "service": "layer1-report2text|layer2-stable|layer3-advanced",
+  "version": "0.2.0",
+  "port": 5171,
+  "pid": 12345,
+  "uptimeMs": 123456,
+  "startedAt": "2026-02-27T00:00:00.000Z",
+  "artifactsRoot": "C:\\...\\.artifacts",
+  "ready": true,
+  "details": {
+    "hasApiKey": true,
+    "llmEnabled": true,
+    "mode": "direct|from-run|stable|analyze"
+  }
 }
 ```
 
-> 너가 말한 “맥락”은 JSON에 담기기 어렵기 때문에,  **extract/extracted.txt** (본문)를 항상 같이 보관/전달합니다.
+* `details.hasApiKey`: LLM 사용하는 레이어는 키 보유 여부를 표시(키가 없어도 서버는 ready일 수 있음)
+* `ready`: 서버가 요청 처리 가능한 상태인지(라우트 등록/필수 디렉토리 접근 가능 여부 등)
+* `service/version`: 런처 UI 표시와 디버그를 위해 필수
+
+> Layer2가 “진짜 완전 동결”로 인해 /healthz 추가도 불가하다면:
+> 예외 규칙으로 launcher는 L2에 한해 `GET /` 200 응답을 health로 간주하도록 설정할 수 있다. (본 PRD 기본안은 /healthz 추가 허용)
 
 ---
 
-# 5) API 설계(초안)
+## 7. API Gateway(Launcher) — 모드 선택/프록시 규칙
 
-## Layer1 API
+Launcher는 UI에서 들어오는 요청을 레이어 서버로 프록시한다.
 
-* `POST /api/l1/report2text`
-  * multipart: `documents[]`
-  * 응답: `{ runId, outlinePreview, meta }`
-* `GET /api/runs`
-  * runId 목록
-* `GET /api/runs/:runId`
-  * 메타/파일 링크
-* `GET /api/runs/:runId/layer1/outline.md`
-* `GET /api/runs/:runId/layer1/outline.json`
-* `GET /api/runs/:runId/extract/extracted.txt`
+### 7.1 런처 자체 API
 
-## Layer2 API(동결)
+* `GET /api/status`
+  * L1/L2/L3의 상태(starting/healthy/unhealthy/failed), lastHealth, restartCount, ports
+* `GET /api/logs?service=L1|L2|L3`
+  * 최근 로그 n줄(선택)
 
-* 기존 stable의 `POST /api/generate-llm` 유지
-* 추가 연결만 필요하면(코드 건드리지 않기 원칙이니까) Layer1에서 “파일 업로드를 다시” 하거나,
-  * 또는 Layer2 앞단에 프록시 서버를 두는 방식(추후)
+### 7.2 실행 API(프록시)
 
-## Layer3 API
+UI는 **항상 launcher로만** 요청:
 
-### A) Direct 업로드
-
-* `POST /api/l3/build-direct`
-  * multipart: `documents[]`
-  * 옵션: `themePreset`, `density`, `languageHint` 등(하지만 **제약 최소화**가 원칙이므로 MVP는 최소 옵션)
-
-### B) From L1 (runId 기반)
-
-* `POST /api/l3/build-from-run`
-  * body: `{ runId, themePreset? }`
-  * Layer3는 로컬 `.artifacts/runId/`에서:
-    * `extract/extracted.txt`(본문)
-    * `layer1/outline.json`(설계도)
-    * `source/*`(원본)
-      를 읽어 빌드
+* L1 분석
+  * `POST /api/run/l1/analyze` → `http://127.0.0.1:L1_PORT/api/l1/analyze`
+* L2 안정화 빌드
+  * `POST /api/run/l2/build` → `http://127.0.0.1:L2_PORT/api/generate-llm`
+* L3 Direct
+  * `POST /api/run/l3/build-direct` → `http://127.0.0.1:L3_PORT/api/l3/build-direct`
+* L3 From runId(=From L1 artifacts)
+  * `POST /api/run/l3/build-from-run` → `http://127.0.0.1:L3_PORT/api/l3/build-from-run`
 
 ---
 
-# 6) Layer3 구현 전략(중요): “자유도 높이되, 충돌 지점은 시스템이 통제”
+## 8. Artifact Protocol (runId) — 연결의 SSOT
 
-너의 요구: **제약옵션 최소화 + LLM 자유도**
-하지만 우리가 과거에 터진 포인트는 거의 항상 “스크립트 충돌/검증 실패/NO_SLIDES” 같은 **구조 계약 붕괴**였음.
+### 8.1 ARTIFACTS_ROOT(공유 데이터, 공유 코드 아님)
 
-그래서 L3에서 자유도를 높이는 방법은 “규칙을 많이 없애기”가 아니라:
+* Launcher가 `ARTIFACTS_ROOT`를 L1/L3에 동일 값으로 주입
+* L1이 생성한 runId artifacts를 L3가 읽는다.
 
-## L3 Direct (LLM HTML 생성)에서 LLM이 건드리지 말아야 할 것
+### 8.2 runId 레이아웃(표준)
 
-* **JS 내비게이션 로직은 LLM에게 맡기지 않고** , 시스템(finalize)에서 주입
-* LLM은 “슬라이드 콘텐츠”와 “스타일링(Tailwind class 중심)”에만 집중
-  → 자유도는 콘텐츠/레이아웃에 주고, 안정성은 시스템이 보장
+L1 생성(필수):
 
-### L3 Direct 프롬프트의 “최소 계약(필수 3개만)”
+```text
+{ARTIFACTS_ROOT}/{runId}/
+  manifest.json
+  source/original.(pdf|docx|txt)
+  extract/extracted.txt
+  extract/extract.meta.json
+  layer1/outline.json
+  layer1/outline.md
+  layer1/layer1.meta.json
+```
 
-1. HTML만 반환 (doctype/head/body)
-2. `<section class="slide">`로 슬라이드 구분, 최소 2장
-3. Tailwind CDN 포함(또는 시스템이 삽입)
+L3 생성(필수):
 
-이 정도면 제약이 적으면서도 NO_SLIDES 확률이 낮아집니다.
+```text
+{ARTIFACTS_ROOT}/{runId}/layer3/deck.html
+{ARTIFACTS_ROOT}/{runId}/layer3/meta.json
+```
 
----
+### 8.3 From L1 연결 UX(launcher UI)
 
-# 7) Tailwind CDN 기반 디자인 시스템 초안(L3 MVP)
-
-## 기본 구조(공통)
-
-* 배경/타이포 스케일/그리드만 고정하고, 나머지는 자유
-* 예: `min-h-screen`, `p-12`, `max-w-6xl`, `leading-snug` 같은 편집적 규칙
-
-## MVP 테마 프리셋 2개(1차 목표에 적합)
-
-* `Executive Dark`: 다크 배경 + 카드/라인 강조
-* `Editorial Light`: 화이트 배경 + 타이포 강조(잡지 느낌)
-
-## 레이아웃 템플릿(From L1 렌더용, 8개)
-
-* title / agenda / section divider
-* bullets
-* two-col
-* kpi cards
-* table
-* timeline
-* quote/case
-
-> From L1은 “코드 렌더”라서 디자인 품질이 안정적으로 나오고, LLM이 없어도 예쁩니다.
+* L1 분석 실행 후 결과 카드에:
+  * “Build Advanced (From this runId)” 버튼 제공
+  * 버튼 클릭 시 runId를 `POST /api/run/l3/build-from-run`에 전달
 
 ---
 
-# 8) 구현 로드맵(MVP 우선순위)
+## 9. Layer별 기능 명세(요약)
 
-## Sprint 1: Layer1 완성 (docs 생성 + 편집 + 다운로드 + runId 저장)
+### 9.1 Layer1 Report2Text
 
-* 가장 먼저: “분석 결과를 사람이 다룰 수 있게” 만드는 게 전체 플로우의 시작점
+* `POST /api/l1/analyze`:
+  * 업로드 문서 → 텍스트 추출 → outline JSON/MD 생성 → artifacts 저장
+* UI에서 outline 편집(웹에서만)
+* 저장:
+  * `POST /api/l1/runs/:runId/save-outline` (outline.json/md 업데이트)
 
-## Sprint 2: Layer3 From L1 (LLM 없이 코드 렌더)
+### 9.2 Layer2 Stable
 
-* docs(JSON) + 본문(txt) 동시 저장/전달
-* Tailwind 프리셋 + 템플릿 렌더
-* nav/print는 L3 자체 엔진(=L2에서 검증된 엔진 복제)로 주입
+* 기존 안정화 파이프라인 유지
+* Launcher에서 “Stable Build” 클릭하면 L2에 프록시 호출
 
-## Sprint 3: Layer3 Direct (LLM HTML 생성, 최소 계약)
+### 9.3 Layer3 Advanced
 
-* 제약 옵션 최소화
-* JS는 시스템 주입(충돌 방지)
+* Direct: 문서 업로드 → LLM HTML 생성(디자인 고도화, Tailwind CDN)
+* From-run: runId 기반으로 artifacts 읽기 → **outline 중심 코드 렌더**
+  * LLM polish: MVP 비활성
 
 ---
 
-# 9) 여기서 내가 추가로 확인해야 하는 부분(질문 2개만)
+## 10. UI(Launcher public/index.html) 요구사항
 
-이미 거의 다 확정됐고, 아래 2개만 확정하면 설계를 “API/폴더/스크립트” 수준으로 바로 고정할 수 있어요.
+### 10.1 상단 상태바(필수)
 
-1. **Layer1 docs 다운로드 포맷** :
-   “MD만” 다운로드면 충분해요? 아니면 “MD + JSON 둘 다”가 좋아요?
-   (웹 UI 편집만이라도, L3 From L1 렌더는 JSON이 SSOT라서 **JSON도 같이**를 강력 추천하긴 합니다.)
-2. **Layer3 From L1에서 본문(extracted.txt)을 어떻게 쓰길 원해요?**
-   * MVP에서는 “저장/전달만 하고 사용은 안 함(향후 대비)”
-   * 아니면 MVP에서도 “evidence 패널(본문 검색/근거 표시)” 정도는 바로 쓰길 원함?
+* L1/L2/L3 상태 표시:
+  * starting/healthy/unhealthy/failed
+* 포트, 재시작 카운트, last health timestamp 표시
 
-답을 주면 다음 단계로, **정확한 실행 스크립트(npm workspaces), 포트/라우팅 설계, runId/파일 저장 규칙, UI 화면 구성(컴포넌트 단위)**까지 한번에 내려줄게요.
+### 10.2 모드 선택(필수)
+
+* 탭/카드로 4가지 액션 제공:
+  1. Analyze (L1)
+  2. Build Stable (L2)
+  3. Build Advanced Direct (L3)
+  4. Build Advanced From runId (L3)
+
+### 10.3 결과 표시(필수)
+
+* 실행 결과는 “Run 카드”로 누적
+* 각 카드에:
+  * runId
+  * action/mode
+  * 성공/실패(OK/FALLBACK)
+  * 핵심 메트릭(슬라이드 수, timings, 모델 사용)
+  * 다운로드 링크(outline/md/json or deck.html)
+  * Raw meta 펼치기(JSON)
+
+---
+
+## 11. UI 결과 표시 메타 스키마(LauncherMeta v0.2)
+
+Launcher는 레이어 응답을 그대로 보여주되, UI에서 일관된 카드 렌더를 위해 **표준화된 UI 메타**를 가진다.
+(정규화는 launcher에서만 수행. 레이어 코드 import 없음.)
+
+### 11.1 LauncherMeta (정규화)
+
+```json
+{
+  "uiMetaVersion": "launcher-meta-v0.2",
+  "runId": "20260227_153012_abcd",
+  "action": "l1-analyze|l2-build|l3-direct|l3-from-run",
+  "layer": "L1|L2|L3",
+  "ok": true,
+  "status": "SUCCESS|FALLBACK|FAILED",
+  "whyFallback": "N/A|LLM_TIMEOUT|LLM_ERROR|NO_SLIDES|...",
+  "artifactsRoot": "C:\\...\\.artifacts",
+  "outputs": [
+    { "kind": "outline.json", "path": "/artifacts/<runId>/layer1/outline.json", "mime": "application/json" },
+    { "kind": "deck.html", "path": "/artifacts/<runId>/layer3/deck.html", "mime": "text/html" }
+  ],
+  "metrics": {
+    "slideCount": 16,
+    "rawLength": 21026,
+    "extractedLength": 21026,
+    "extractionMethod": "doctype|pdf|docx|text|none"
+  },
+  "timings": {
+    "totalMs": 58000,
+    "extractMs": 1200,
+    "generateMs": 57520,
+    "repairMs": 0,
+    "renderMs": 0
+  },
+  "llm": {
+    "attempted": true,
+    "modelUsed": "gemini-2.5-flash",
+    "attemptCount": 1,
+    "attempts": [
+      { "model": "gemini-2.5-flash", "ok": true, "ms": 57520, "timeoutMs": 120000, "reasonCode": "OK" }
+    ]
+  },
+  "rawMeta": { }
+}
+```
+
+### 11.2 레이어별 rawMeta 보존
+
+* launcher는 원본 메타를 `rawMeta`에 그대로 저장/표시
+* UI 카드 렌더는 `metrics/timings/llm`만 사용(필드 없으면 미표시)
+
+### 11.3 Artifact 파일 서빙(launcher)
+
+* `GET /artifacts/<runId>/...` 형태로 제공(정적 서버)
+* 보안:
+  * path traversal 방지(`..`, absolute path 차단)
+  * runId whitelist(디렉토리 존재 여부 확인)
+
+---
+
+## 12. DoD(완료 기준)
+
+### 런처 DoD
+
+* `npm run dev` 한 번으로 L1/L2/L3가 모두 실행됨
+* `/api/status`에서 3개 모두 `healthy` 표시
+* 프로세스 종료/비정상 종료 시 자동 재시작 동작
+* Ctrl+C 종료 시 child 프로세스 모두 종료
+
+### /healthz DoD
+
+* 각 레이어가 `/healthz` JSON을 반환
+* launcher health polling이 안정적으로 상태를 갱신
+
+### UI DoD
+
+* 모드 선택 + 실행 + 결과 카드 표시
+* runId 기반으로 L1 → L3(from-run) 버튼 연결
+* outputs 다운로드 링크 정상
+
+---
+
+## 13. 구현 순서(추천)
+
+1. Launcher skeleton + ProcessManager(boot-time spawn) + /api/status + UI 상태바
+2. 각 레이어 `/healthz` 개별 구현
+3. Launcher proxy routes 4개 연결
+4. Artifact static serving(`/artifacts/*`)
+5. UI 결과 카드 + LauncherMeta 정규화
+
+---
