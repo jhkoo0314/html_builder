@@ -44,13 +44,14 @@ function isOverloaded503(error) {
   return status === 503 || /503|service unavailable|high demand/i.test(msg);
 }
 
-function getPerModelTimeoutMs(modelName, fallbackTimeoutMs, remainingBudgetMs) {
+function getPerModelTimeoutMs(modelName, fallbackTimeoutMs, remainingBudgetMs, modelTimeoutsMs = {}) {
   const defaultTimeout = Number.isFinite(fallbackTimeoutMs) && fallbackTimeoutMs > 0
     ? fallbackTimeoutMs
     : 35000;
-  let capMs = defaultTimeout;
-  if (modelName === "gemini-2.5-flash") capMs = 60000;
-  if (modelName === "gemini-3-flash-preview") capMs = 15000;
+  const configuredTimeout = Number(modelTimeoutsMs && modelTimeoutsMs[modelName]);
+  const capMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : defaultTimeout;
   return Math.max(1, Math.min(capMs, remainingBudgetMs));
 }
 
@@ -66,6 +67,7 @@ async function runWithModelFallback({
   totalBudgetMs,
   attemptTimeoutMs,
   minRemainingMs = 5000,
+  modelTimeoutsMs = {},
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const attempts = [];
@@ -92,8 +94,8 @@ async function runWithModelFallback({
         break;
       }
       const computedTimeoutMs = useBudget
-        ? getPerModelTimeoutMs(modelName, perAttemptMs, loopRemainingBudgetMs)
-        : getPerModelTimeoutMs(modelName, perAttemptMs, perAttemptMs);
+        ? getPerModelTimeoutMs(modelName, perAttemptMs, loopRemainingBudgetMs, modelTimeoutsMs)
+        : getPerModelTimeoutMs(modelName, perAttemptMs, perAttemptMs, modelTimeoutsMs);
       const attemptStartedAt = Date.now();
       try {
         const model = genAI.getGenerativeModel({ model: modelName });

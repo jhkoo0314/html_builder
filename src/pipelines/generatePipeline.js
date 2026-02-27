@@ -150,6 +150,7 @@ async function generatePipeline({ files }) {
     const llmResult = await runWithModelFallback({
       apiKey: env.GEMINI_API_KEY,
       candidates: DEFAULTS.MODEL_CANDIDATES,
+      modelTimeoutsMs: DEFAULTS.MODEL_TIMEOUTS_MS,
       prompt: llmPrompt,
       totalBudgetMs: DEFAULTS.TOTAL_LLM_BUDGET_MS,
       attemptTimeoutMs: DEFAULTS.ATTEMPT_TIMEOUT_MS,
@@ -300,6 +301,7 @@ async function attemptRepair({ env, raw, enabled }) {
   const repaired = await runWithModelFallback({
     apiKey: env.GEMINI_API_KEY,
     candidates: DEFAULTS.MODEL_CANDIDATES,
+    modelTimeoutsMs: DEFAULTS.MODEL_TIMEOUTS_MS,
     prompt,
     timeoutMs: DEFAULTS.LLM_REPAIR_TIMEOUT_MS,
   });
