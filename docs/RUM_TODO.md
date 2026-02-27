@@ -36,6 +36,14 @@
 
 ## 2) 상세 구현 계획 (Task Breakdown)
 
+## 실행 순서 재정의 (L1 우선 게이트)
+- [x] 재계획 원칙: **L1 기능 구현 완료 전 L3 기능 구현 착수 금지**
+- [ ] Gate-L1-Ready: 아래 4개가 모두 통과되어야 L3 기능 구현 시작 가능
+  - [ ] L1 analyze/save-outline 기능 구현 완료
+  - [ ] L1 기능 검증(정상/오류/아티팩트 저장) 통과
+  - [ ] launcher 경유 L1 실행 검증 통과
+  - [ ] 사용자 실제 실행 확인(acceptance) 완료
+
 ## Phase 0. 기준선 고정
 - [x] P0-1. 환경변수 계약 문서화 (`docs/PHASE0_BASELINE.md`)
 - [x] P0-2. 포트/경로 SSOT 고정 (`5170~5173`, `ARTIFACTS_ROOT`)
@@ -100,56 +108,76 @@
 - [x] 세 레이어 health 응답이 launcher polling과 정상 연동
 
 ## Phase 4. API Gateway 프록시 연결
-- [ ] P4-1. `POST /api/run/l1/analyze` 프록시
-- [ ] P4-2. `POST /api/run/l2/build` 프록시
-- [ ] P4-3. `POST /api/run/l3/build-direct` 프록시
-- [ ] P4-4. `POST /api/run/l3/build-from-run` 프록시
-- [ ] P4-5. 공통 오류 매핑(타임아웃/5xx/연결실패) 및 UI 친화 에러 포맷
+- [x] P4-1. `POST /api/run/l1/analyze` 프록시
+- [x] P4-2. `POST /api/run/l2/build` 프록시
+- [x] P4-3. `POST /api/run/l3/build-direct` 프록시
+- [x] P4-4. `POST /api/run/l3/build-from-run` 프록시
+- [x] P4-5. 공통 오류 매핑(타임아웃/5xx/연결실패) 및 UI 친화 에러 포맷
 
 완료기준
-- [ ] UI는 launcher만 호출해 4개 액션을 모두 실행 가능
+- [x] UI는 launcher만 호출해 4개 액션을 모두 실행 가능
 
-## Phase 5. Artifact protocol + 정적 서빙
-- [ ] P5-1. L1 artifacts 레이아웃 저장 점검 (`manifest/source/extract/layer1`)
-- [ ] P5-2. L3 from-run 입력 검증 (runId 존재/필수 파일 확인)
-- [ ] P5-3. L3 outputs 저장 (`layer3/deck.html`, `layer3/meta.json`)
-- [ ] P5-4. Launcher `GET /artifacts/<runId>/...` 정적 서빙
-- [ ] P5-5. 보안 처리 (path traversal 차단, runId whitelist)
-- [ ] P5-6. From-L1 Gate 체크리스트 통과 후 통합 활성화
+## Phase 5. Layer1 기능 구현/검증/사용자 실행 (우선)
+- [ ] P5A-1. `POST /api/l1/analyze` 실제 구현 (문서 입력 -> extract -> outline -> artifacts 저장)
+- [ ] P5A-2. `POST /api/l1/runs/:runId/save-outline` 실제 구현 (outline json/md 업데이트)
+- [ ] P5A-3. L1 artifacts 레이아웃 고정 저장 검증 (`manifest/source/extract/layer1`)
+- [ ] P5A-4. launcher 프록시 경유 L1 실행 E2E 검증
+- [ ] P5A-5. 사용자 실행 시나리오 검증 및 수용 확인
+
+완료기준
+- [ ] L1 단독/launcher 경유 모두 성공
+- [ ] 사용자 관점 재현 절차 1회 이상 성공
+- [ ] Gate-L1-Ready 체크 완료
+
+## Phase 6. Layer3 기능 구현 (Gate-L1-Ready 이후 착수)
+- [ ] P6-1. `POST /api/l3/build-direct` 실제 구현
+- [ ] P6-2. `POST /api/l3/build-from-run` 실제 구현
+- [ ] P6-3. L3 outputs 저장 (`layer3/deck.html`, `layer3/meta.json`)
+- [ ] P6-4. L1 runId 연동 검증 (from-run)
+- [ ] P6-5. From-L1 Gate 체크리스트 통과 후 통합 활성화
   - [ ] L1 standalone DoD 통과 (artifacts 생성/편집)
   - [ ] L3 standalone DoD 통과 (direct build)
   - [ ] launcher spawn + `/healthz` polling DoD 통과
   - [ ] L1/L3 `ARTIFACTS_ROOT` 주입값 일치 확인
 
 완료기준
+- [ ] L3 direct/from-run 성공
+- [ ] L1 -> L3 연동 성공
 - [ ] Gate 통과 전에는 From-L1 통합 비활성 상태 유지
 - [ ] Gate 통과 후 L1 실행 결과 runId로 L3 from-run 성공
+
+## Phase 7. Artifact protocol + 정적 서빙
+- [ ] P7-1. Launcher `GET /artifacts/<runId>/...` 정적 서빙
+- [ ] P7-2. 보안 처리 (path traversal 차단, runId whitelist)
+- [ ] P7-3. 결과 파일 다운로드 링크 검증
+
+완료기준
 - [ ] 결과 파일 다운로드 링크가 정상 동작
 
-## Phase 6. Launcher UI 구현
-- [ ] P6-1. 상단 상태바 (상태/포트/재시작횟수/lastHealth)
-- [ ] P6-2. 4개 모드 액션 UI (Analyze/Stable/Direct/From-run)
-- [ ] P6-3. 실행 결과 Run 카드 누적 렌더
-- [ ] P6-4. L1 결과 카드에서 “Build Advanced (From this runId)” 연결
-- [ ] P6-5. 로그 뷰어(선택) + 최근 200줄 표시
+## Phase 8. Launcher UI 구현
+- [ ] P8-1. 상단 상태바 (상태/포트/재시작횟수/lastHealth)
+- [ ] P8-2. 4개 모드 액션 UI (Analyze/Stable/Direct/From-run)
+- [ ] P8-3. 실행 결과 Run 카드 누적 렌더
+- [ ] P8-4. L1 결과 카드에서 “Build Advanced (From this runId)” 연결
+- [ ] P8-5. 로그 뷰어(선택) + 최근 200줄 표시
 
 완료기준
 - [ ] 모드 선택→실행→결과/다운로드까지 launcher UI 단독으로 완결
 
-## Phase 7. LauncherMeta 정규화
-- [ ] P7-1. 레이어 raw 응답 수집 및 `rawMeta` 보존
-- [ ] P7-2. `launcher-meta-v0.2` 정규화 모듈 구현
-- [ ] P7-3. metrics/timings/llm 필드 없을 때 안전 렌더 처리
-- [ ] P7-4. `SUCCESS|FALLBACK|FAILED` 판정 규칙 정리
+## Phase 9. LauncherMeta 정규화
+- [ ] P9-1. 레이어 raw 응답 수집 및 `rawMeta` 보존
+- [ ] P9-2. `launcher-meta-v0.2` 정규화 모듈 구현
+- [ ] P9-3. metrics/timings/llm 필드 없을 때 안전 렌더 처리
+- [ ] P9-4. `SUCCESS|FALLBACK|FAILED` 판정 규칙 정리
 
 완료기준
 - [ ] 서로 다른 레이어 응답도 동일한 UI 카드 스키마로 렌더
 
-## Phase 8. 통합 검증/릴리스 체크
-- [ ] P8-1. DoD 시나리오 테스트 스크립트화
-- [ ] P8-2. 장애 시나리오 테스트 (강제 kill, health timeout, restart limit)
-- [ ] P8-3. 문서 동기화 (`RUN.md`, runbook, env 예시, known issues)
-- [ ] P8-4. 최종 수용 점검표 작성
+## Phase 10. 통합 검증/릴리스 체크
+- [ ] P10-1. DoD 시나리오 테스트 스크립트화
+- [ ] P10-2. 장애 시나리오 테스트 (강제 kill, health timeout, restart limit)
+- [ ] P10-3. 문서 동기화 (`RUN.md`, runbook, env 예시, known issues)
+- [ ] P10-4. 최종 수용 점검표 작성
 
 완료기준
 - [ ] RUN.md의 DoD 항목 전부 통과
@@ -159,14 +187,19 @@
 ## 3) 우선순위 (실행 순서)
 1. Phase 0~2 (런처 생명주기 안정화)
 2. Phase 3~4 (health + 프록시 연결)
-3. Phase 5~7 (artifact/UI/메타 통합)
-4. Phase 8 (통합 검증 및 문서화)
+3. **Phase 5 (L1 구현/검증/사용자 실행)**
+4. **Gate-L1-Ready 통과**
+5. Phase 6 (L3 구현)
+6. Phase 7~9 (artifact/UI/메타 통합)
+7. Phase 10 (통합 검증 및 문서화)
 
 ## 4) 최소 마일스톤
 - M1: Launcher 기동/상태/재시작까지 동작 (UI 상태바 포함)
 - M2: 4개 모드 프록시와 runId 연동 동작
-- M3: 결과 카드/다운로드/메타 정규화 완성
-- M4: DoD 전체 통과
+- M3: **L1 기능 완성 + 사용자 실행 검증 완료(Gate-L1-Ready)**
+- M4: L3 기능 완성(direct/from-run)
+- M5: 결과 카드/다운로드/메타 정규화 완성
+- M6: DoD 전체 통과
 
 ## 5) SSOT 운영 상수(고정)
 - Spawn command map: per-layer explicit map 사용

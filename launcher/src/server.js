@@ -5,6 +5,7 @@ const path = require("path");
 const express = require("express");
 const { StatusStore } = require("./statusStore");
 const { ProcessManager } = require("./processManager");
+const { createProxyRoutes } = require("./proxyRoutes");
 
 function intEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -23,6 +24,7 @@ const unhealthySustainMs = intEnv("UNHEALTHY_SUSTAIN_MS", 10000);
 const restartMaxAttempts = intEnv("RESTART_MAX_ATTEMPTS", 5);
 const restartWindowMs = intEnv("RESTART_WINDOW_MS", 300000);
 const restartBackoffBaseMs = intEnv("RESTART_BACKOFF_BASE_MS", 500);
+const proxyTimeoutMs = intEnv("PROXY_TIMEOUT_MS", 180000);
 
 if (!fs.existsSync(artifactsRoot)) {
   fs.mkdirSync(artifactsRoot, { recursive: true });
@@ -70,7 +72,6 @@ const manager = new ProcessManager({
   restartBackoffBaseMs,
 });
 
-app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/status", (req, res) => {
@@ -109,6 +110,16 @@ app.get("/api/logs", (req, res) => {
     lines: statusStore.getServiceLogs(service),
   });
 });
+
+app.use(
+  "/api",
+  createProxyRoutes({
+    l1Port: intEnv("L1_PORT", 5171),
+    l2Port: intEnv("L2_PORT", 5172),
+    l3Port: intEnv("L3_PORT", 5173),
+    proxyTimeoutMs,
+  })
+);
 
 app.get("/healthz", (req, res) => {
   res.json({
