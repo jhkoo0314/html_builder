@@ -59,6 +59,8 @@ async function generatePipeline({ files }) {
       hasApiKey: Boolean(env.GEMINI_API_KEY),
       llmAttempted: false,
       llmAttempts: [],
+      llmBudgetMs: 0,
+      llmAttemptTimeoutMs: 0,
       rawLength: 0,
       extractedLength: 0,
       slideCount: 0,
@@ -91,9 +93,13 @@ async function generatePipeline({ files }) {
       apiKey: env.GEMINI_API_KEY,
       candidates: DEFAULTS.MODEL_CANDIDATES,
       prompt: `${prompts.system}\n\n${prompts.user}`,
-      timeoutMs: DEFAULTS.LLM_GENERATE_TIMEOUT_MS,
+      totalBudgetMs: DEFAULTS.TOTAL_LLM_BUDGET_MS,
+      attemptTimeoutMs: DEFAULTS.ATTEMPT_TIMEOUT_MS,
+      minRemainingMs: DEFAULTS.MIN_LLM_REMAINING_BUDGET_MS,
     });
     baseMeta.llmAttempts = llmResult.attempts || [];
+    baseMeta.llmBudgetMs = Number(llmResult.budgetMs || 0);
+    baseMeta.llmAttemptTimeoutMs = Number(llmResult.attemptTimeoutMs || 0);
     baseMeta.timings.generateMs = Date.now() - genStart;
 
     if (!llmResult.ok) {
