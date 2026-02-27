@@ -97,16 +97,33 @@
       }
       .form-row { display: grid; gap: 6px; margin-bottom: 10px; }
       .form-row label { font-size: 12px; color: var(--muted); }
-      input[type="text"], textarea {
+      input[type="text"], input[type="number"], select, textarea {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 8px;
         font: inherit;
+        background: #fff;
       }
       textarea { min-height: 100px; resize: vertical; }
       .stack { display: flex; gap: 6px; flex-wrap: wrap; }
+      .stack > * { flex: 1 1 auto; min-width: 0; }
+      .inline-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .inline-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
       .hint { font-size: 12px; color: var(--muted); }
+      .hint.warn { color: #92400e; }
+      .radio-row { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--muted); }
+      .radio-row label { display: inline-flex; gap: 6px; align-items: center; }
+      .section-box {
+        margin-top: 10px;
+        border-top: 1px dashed var(--line);
+        padding-top: 10px;
+      }
+      .match-count {
+        font-size: 12px;
+        color: var(--muted);
+        min-height: 18px;
+      }
       .log {
         margin-top: 12px;
         border: 1px solid var(--line);
@@ -143,6 +160,11 @@
         <button id="btnLoadStorage">Load Step1</button>
         <button id="btnUndo" disabled>Undo</button>
         <button id="btnRedo" disabled>Redo</button>
+        <select id="exportProfile" aria-label="Export profile">
+          <option value="web" selected>Web</option>
+          <option value="pdf-a4">PDF-A4</option>
+          <option value="executive">Executive</option>
+        </select>
         <button id="btnDownload" class="btn-primary" disabled>Download Edited HTML</button>
       </div>
     </header>
@@ -178,6 +200,78 @@
           <button id="btnApplyText" class="btn-primary" disabled>Apply Text</button>
           <button id="btnSyncFromFrame" disabled>Sync From Preview</button>
         </div>
+        <div class="section-box">
+          <h3>Style</h3>
+          <div class="radio-row">
+            <label><input type="radio" name="styleTarget" value="title" checked /> Title</label>
+            <label><input type="radio" name="styleTarget" value="body" /> Body</label>
+          </div>
+          <div class="inline-2" style="margin-top:8px;">
+            <div class="form-row" style="margin-bottom:0;">
+              <label for="styleFontSize">Font size (px)</label>
+              <input id="styleFontSize" type="number" min="16" max="64" step="1" />
+            </div>
+            <div class="form-row" style="margin-bottom:0;">
+              <label for="styleFontWeight">Font weight</label>
+              <select id="styleFontWeight">
+                <option value="400">400</option>
+                <option value="500">500</option>
+                <option value="600">600</option>
+                <option value="700">700</option>
+                <option value="800">800</option>
+              </select>
+            </div>
+          </div>
+          <div class="inline-2" style="margin-top:6px;">
+            <div class="form-row" style="margin-bottom:0;">
+              <label for="styleTextAlign">Align</label>
+              <select id="styleTextAlign">
+                <option value="left">left</option>
+                <option value="center">center</option>
+                <option value="right">right</option>
+              </select>
+            </div>
+            <div class="form-row" style="margin-bottom:0;">
+              <label for="styleColorHex">Text color</label>
+              <div class="inline-2">
+                <input id="styleColor" type="color" value="#111111" />
+                <input id="styleColorHex" type="text" value="#111111" />
+              </div>
+            </div>
+          </div>
+          <div class="stack" style="margin-top:8px;">
+            <button id="btnApplyStyle" class="btn-primary" disabled>Apply Style</button>
+            <button id="btnResetStyle" disabled>Reset Style</button>
+          </div>
+        </div>
+        <div class="section-box">
+          <h3>Replace</h3>
+          <div class="form-row" style="margin-bottom:6px;">
+            <label for="replaceFind">Find</label>
+            <input id="replaceFind" type="text" />
+          </div>
+          <div class="form-row" style="margin-bottom:6px;">
+            <label for="replaceWith">Replace</label>
+            <input id="replaceWith" type="text" />
+          </div>
+          <div class="inline-2" style="margin-bottom:6px;">
+            <label class="hint"><input id="replaceMatchCase" type="checkbox" /> Match case</label>
+            <label class="hint"><input id="replaceWholeWord" type="checkbox" /> Whole word</label>
+          </div>
+          <div class="form-row" style="margin-bottom:6px;">
+            <label for="replaceScope">Scope</label>
+            <select id="replaceScope">
+              <option value="current">Current slide</option>
+              <option value="all">All slides</option>
+            </select>
+          </div>
+          <p class="hint warn">Whole word uses English-style boundaries and may be imprecise for Korean text.</p>
+          <div class="stack" style="margin-top:8px;">
+            <button id="btnCountMatches" disabled>Count Matches</button>
+            <button id="btnApplyReplace" class="btn-primary" disabled>Replace</button>
+          </div>
+          <div id="replaceCount" class="match-count">0 matches</div>
+        </div>
         <p class="hint" style="margin-top:10px;">
           You can edit directly in preview and sync it here. Keyboard shortcuts: Ctrl+Z / Ctrl+Y.
         </p>
@@ -206,6 +300,7 @@
         fileInput: document.getElementById("fileInput"),
         btnLoadStorage: document.getElementById("btnLoadStorage"),
         btnDownload: document.getElementById("btnDownload"),
+        exportProfile: document.getElementById("exportProfile"),
         btnUndo: document.getElementById("btnUndo"),
         btnRedo: document.getElementById("btnRedo"),
         btnMoveUp: document.getElementById("btnMoveUp"),
@@ -221,6 +316,22 @@
         titleInput: document.getElementById("titleInput"),
         bodyInput: document.getElementById("bodyInput"),
         changeLog: document.getElementById("changeLog"),
+        styleTarget: document.querySelectorAll('input[name="styleTarget"]'),
+        styleFontSize: document.getElementById("styleFontSize"),
+        styleFontWeight: document.getElementById("styleFontWeight"),
+        styleTextAlign: document.getElementById("styleTextAlign"),
+        styleColor: document.getElementById("styleColor"),
+        styleColorHex: document.getElementById("styleColorHex"),
+        btnApplyStyle: document.getElementById("btnApplyStyle"),
+        btnResetStyle: document.getElementById("btnResetStyle"),
+        replaceFind: document.getElementById("replaceFind"),
+        replaceWith: document.getElementById("replaceWith"),
+        replaceMatchCase: document.getElementById("replaceMatchCase"),
+        replaceWholeWord: document.getElementById("replaceWholeWord"),
+        replaceScope: document.getElementById("replaceScope"),
+        btnCountMatches: document.getElementById("btnCountMatches"),
+        btnApplyReplace: document.getElementById("btnApplyReplace"),
+        replaceCount: document.getElementById("replaceCount"),
       };
 
       function parseHtml(html) {
@@ -258,6 +369,58 @@
         return (el ? el.textContent : "").replace(/\s+/g, " ").trim();
       }
 
+      function styleTargetMode() {
+        const checked = Array.from(els.styleTarget).find((el) => el.checked);
+        return checked ? checked.value : "title";
+      }
+
+      function targetSelectors(mode) {
+        if (mode === "title") return ['[data-step2-role="title"]', "h1,h2,h3,h4"];
+        return ['[data-step2-role="body"]', "p,li,figcaption,blockquote"];
+      }
+
+      function findTargetElement(slide, mode) {
+        const selectors = targetSelectors(mode);
+        return slide.querySelector(selectors[0]) || slide.querySelector(selectors[1]);
+      }
+
+      function getOrCreateTargetElement(slide, mode) {
+        let target = findTargetElement(slide, mode);
+        if (target) return target;
+        if (mode === "title") {
+          target = state.doc.createElement("h2");
+          target.setAttribute("data-step2-role", "title");
+          slide.prepend(target);
+          return target;
+        }
+        target = state.doc.createElement("p");
+        target.setAttribute("data-step2-role", "body");
+        slide.appendChild(target);
+        return target;
+      }
+
+      function clampSize(n) {
+        return Math.max(16, Math.min(64, Number(n) || 16));
+      }
+
+      function normalizeHexColor(value) {
+        const raw = String(value || "").trim();
+        const hex = raw.startsWith("#") ? raw : `#${raw}`;
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) return hex.toLowerCase();
+        if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+          const r = hex[1], g = hex[2], b = hex[3];
+          return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+        }
+        return "#111111";
+      }
+
+      function rgbToHex(color) {
+        const m = String(color || "").match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!m) return normalizeHexColor(color || "#111111");
+        const toHex = (n) => Number(n).toString(16).padStart(2, "0");
+        return `#${toHex(m[1])}${toHex(m[2])}${toHex(m[3])}`;
+      }
+
       function slideTitle(slide, idx) {
         const heading = slide.querySelector("h1,h2,h3,h4");
         const t = textOf(heading) || textOf(slide).slice(0, 48) || `Slide ${idx + 1}`;
@@ -269,14 +432,37 @@
       }
 
       function cleanBeforeExport(doc) {
-        const clone = doc.cloneNode(true);
-        clone.querySelectorAll("[data-step2-index]").forEach((el) => {
+        doc.querySelectorAll("[data-step2-index]").forEach((el) => {
           el.removeAttribute("data-step2-index");
           el.removeAttribute("contenteditable");
           el.style.outline = "";
           el.style.outlineOffset = "";
         });
-        return docToHtml(clone);
+      }
+
+      function injectProfileCss(doc, profile) {
+        const old = doc.getElementById("step2-export-profile");
+        if (old) old.remove();
+        if (profile === "web") return;
+
+        const style = doc.createElement("style");
+        style.id = "step2-export-profile";
+        if (profile === "pdf-a4") {
+          style.textContent = `
+            @page { size: A4; margin: 12mm; }
+            section.slide, .slide { page-break-after: always; break-after: page; }
+            .nav-ui, .navigation, .slide-number, #controls, nav { display: none !important; }
+            [style*="position: fixed"] { position: absolute !important; }
+            html, body { overflow: visible !important; }
+          `;
+        } else if (profile === "executive") {
+          style.textContent = `
+            body { font-size: calc(1em + 1px) !important; line-height: 1.42 !important; color: #111827 !important; }
+            p, li { line-height: 1.45 !important; }
+            h1, h2, h3, h4 { color: #0f172a !important; }
+          `;
+        }
+        doc.head.appendChild(style);
       }
 
       function snapshot() {
@@ -341,12 +527,60 @@
         if (!slide) {
           els.titleInput.value = "";
           els.bodyInput.value = "";
+          syncStyleInputs();
           return;
         }
-        const heading = slide.querySelector("h1,h2,h3,h4");
-        const paragraph = slide.querySelector("p,li,figcaption,blockquote");
+        const heading = findTargetElement(slide, "title");
+        const paragraph = findTargetElement(slide, "body");
         els.titleInput.value = textOf(heading);
         els.bodyInput.value = textOf(paragraph);
+        syncStyleInputs();
+      }
+
+      function readTargetStyleFromPreview(mode) {
+        const frameDoc = els.preview.contentDocument;
+        if (!frameDoc) return null;
+        const rootSlide = frameDoc.querySelector(".step2-preview-root > *");
+        if (!rootSlide) return null;
+        const target = findTargetElement(rootSlide, mode);
+        if (!target) return null;
+        const cs = frameDoc.defaultView && frameDoc.defaultView.getComputedStyle
+          ? frameDoc.defaultView.getComputedStyle(target)
+          : null;
+        if (!cs) return null;
+        return {
+          fontSize: parseInt(cs.fontSize, 10) || 16,
+          fontWeight: String(cs.fontWeight || "400"),
+          textAlign: String(cs.textAlign || "left"),
+          color: rgbToHex(cs.color || "#111111"),
+        };
+      }
+
+      function syncStyleInputs() {
+        const slide = selectedSlide();
+        if (!slide) {
+          els.styleFontSize.value = "24";
+          els.styleFontWeight.value = "700";
+          els.styleTextAlign.value = "left";
+          els.styleColor.value = "#111111";
+          els.styleColorHex.value = "#111111";
+          return;
+        }
+        const mode = styleTargetMode();
+        const target = findTargetElement(slide, mode);
+        const fromPreview = readTargetStyleFromPreview(mode);
+        const inline = target ? target.style : null;
+
+        const fontSize = inline && inline.fontSize ? parseInt(inline.fontSize, 10) : (fromPreview ? fromPreview.fontSize : 24);
+        const fontWeight = inline && inline.fontWeight ? inline.fontWeight : (fromPreview ? fromPreview.fontWeight : "700");
+        const textAlign = inline && inline.textAlign ? inline.textAlign : (fromPreview ? fromPreview.textAlign : "left");
+        const color = inline && inline.color ? rgbToHex(inline.color) : (fromPreview ? fromPreview.color : "#111111");
+
+        els.styleFontSize.value = String(clampSize(fontSize));
+        els.styleFontWeight.value = ["400", "500", "600", "700", "800"].includes(String(fontWeight)) ? String(fontWeight) : "700";
+        els.styleTextAlign.value = ["left", "center", "right"].includes(String(textAlign)) ? String(textAlign) : "left";
+        els.styleColor.value = normalizeHexColor(color);
+        els.styleColorHex.value = normalizeHexColor(color);
       }
 
       function refreshToolbar() {
@@ -365,6 +599,10 @@
         els.btnToggleHide.disabled = !hasSlides;
         els.btnApplyText.disabled = !hasSlides;
         els.btnSyncFromFrame.disabled = !hasSlides;
+        els.btnApplyStyle.disabled = !hasSlides;
+        els.btnResetStyle.disabled = !hasSlides;
+        els.btnCountMatches.disabled = !hasSlides;
+        els.btnApplyReplace.disabled = !hasSlides;
       }
 
       function render() {
@@ -378,6 +616,7 @@
 
         annotateSlides();
         const html = buildEditorPreviewHtml();
+        els.preview.onload = () => syncStyleInputs();
         els.preview.srcdoc = html;
         renderSlideList();
         syncInputs();
@@ -540,23 +779,139 @@
         const slide = selectedSlide();
         if (!slide) return;
         commit("Apply text edit");
-        let heading = slide.querySelector('[data-step2-role="title"], h1, h2, h3, h4');
-        if (!heading) {
-          heading = state.doc.createElement("h2");
-          heading.setAttribute("data-step2-role", "title");
-          slide.prepend(heading);
-        }
+        const heading = getOrCreateTargetElement(slide, "title");
         if (els.titleInput.value.trim()) {
           heading.textContent = els.titleInput.value.trim();
         }
 
-        let paragraph = slide.querySelector('[data-step2-role="body"], p, li, figcaption, blockquote');
-        if (!paragraph) {
-          paragraph = state.doc.createElement("p");
-          paragraph.setAttribute("data-step2-role", "body");
-          slide.appendChild(paragraph);
-        }
+        const paragraph = getOrCreateTargetElement(slide, "body");
         if (els.bodyInput.value.trim()) paragraph.textContent = els.bodyInput.value.trim();
+        render();
+      }
+
+      function applyStyleControls() {
+        const slide = selectedSlide();
+        if (!slide) return;
+        const mode = styleTargetMode();
+        const target = getOrCreateTargetElement(slide, mode);
+        commit(`Apply style: ${mode}`);
+
+        target.style.fontSize = `${clampSize(els.styleFontSize.value)}px`;
+        target.style.fontWeight = els.styleFontWeight.value || "700";
+        target.style.textAlign = els.styleTextAlign.value || "left";
+        const hex = normalizeHexColor(els.styleColorHex.value || els.styleColor.value);
+        target.style.color = hex;
+        els.styleColor.value = hex;
+        els.styleColorHex.value = hex;
+        render();
+      }
+
+      function resetStyleControls() {
+        const slide = selectedSlide();
+        if (!slide) return;
+        const mode = styleTargetMode();
+        const target = findTargetElement(slide, mode);
+        if (!target) return;
+        commit(`Reset style: ${mode}`);
+        target.style.removeProperty("font-size");
+        target.style.removeProperty("font-weight");
+        target.style.removeProperty("text-align");
+        target.style.removeProperty("color");
+        if (!target.getAttribute("style")) target.removeAttribute("style");
+        render();
+      }
+
+      function escapeRegex(s) {
+        return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function replaceRegex() {
+        const find = els.replaceFind.value || "";
+        if (!find) return null;
+        const escaped = escapeRegex(find);
+        const source = els.replaceWholeWord.checked ? `\\b${escaped}\\b` : escaped;
+        const flags = `g${els.replaceMatchCase.checked ? "" : "i"}`;
+        return new RegExp(source, flags);
+      }
+
+      function replaceRoots() {
+        if (els.replaceScope.value === "current") {
+          const slide = selectedSlide();
+          return slide ? [slide] : [];
+        }
+        return getSlides(state.doc);
+      }
+
+      function isReplaceNodeAllowed(node) {
+        const parent = node.parentElement;
+        if (!parent) return false;
+        const tag = parent.tagName.toUpperCase();
+        if (["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "INPUT", "CODE", "PRE"].includes(tag)) return false;
+        if (parent.closest(".nav-ui, .navigation, .slide-number, #controls")) return false;
+        return true;
+      }
+
+      function walkTextNodes(root, fn) {
+        const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (isReplaceNodeAllowed(node)) fn(node);
+          node = walker.nextNode();
+        }
+      }
+
+      function countReplaceMatches() {
+        if (!state.doc) return 0;
+        const re = replaceRegex();
+        if (!re) return 0;
+        let count = 0;
+        replaceRoots().forEach((root) => {
+          walkTextNodes(root, (node) => {
+            re.lastIndex = 0;
+            const matches = node.nodeValue.match(re);
+            if (matches) count += matches.length;
+          });
+        });
+        return count;
+      }
+
+      function previewReplaceMatches() {
+        const count = countReplaceMatches();
+        els.replaceCount.textContent = `${count} matches`;
+      }
+
+      function applyReplace() {
+        if (!state.doc) return;
+        const re = replaceRegex();
+        if (!re) {
+          els.replaceCount.textContent = "0 matches";
+          return;
+        }
+        const replacement = els.replaceWith.value || "";
+        const roots = replaceRoots();
+        let changed = 0;
+
+        roots.forEach((root) => {
+          walkTextNodes(root, (node) => {
+            re.lastIndex = 0;
+            const before = node.nodeValue;
+            const matches = before.match(re);
+            if (!matches || !matches.length) return;
+            changed += matches.length;
+          });
+        });
+
+        els.replaceCount.textContent = `${changed} matches`;
+        if (!changed) return;
+
+        const scope = els.replaceScope.value;
+        commit(`Replace: ${changed} changes (scope=${scope})`);
+        roots.forEach((root) => {
+          walkTextNodes(root, (node) => {
+            re.lastIndex = 0;
+            node.nodeValue = node.nodeValue.replace(re, replacement);
+          });
+        });
         render();
       }
 
@@ -602,7 +957,10 @@
 
       function downloadEdited() {
         if (!state.doc) return;
-        const html = cleanBeforeExport(state.doc);
+        const clone = state.doc.cloneNode(true);
+        cleanBeforeExport(clone);
+        injectProfileCss(clone, els.exportProfile.value || "web");
+        const html = docToHtml(clone);
         const blob = new Blob([html], { type: "text/html;charset=utf-8" });
         if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
         state.blobUrl = URL.createObjectURL(blob);
@@ -631,7 +989,23 @@
       els.btnDelete.addEventListener("click", deleteSelected);
       els.btnToggleHide.addEventListener("click", toggleHideSelected);
       els.btnApplyText.addEventListener("click", applyText);
+      els.btnApplyStyle.addEventListener("click", applyStyleControls);
+      els.btnResetStyle.addEventListener("click", resetStyleControls);
+      els.btnCountMatches.addEventListener("click", previewReplaceMatches);
+      els.btnApplyReplace.addEventListener("click", applyReplace);
       els.btnSyncFromFrame.addEventListener("click", syncFromPreview);
+      els.styleTarget.forEach((radio) => radio.addEventListener("change", syncStyleInputs));
+      els.styleColor.addEventListener("input", () => {
+        els.styleColorHex.value = normalizeHexColor(els.styleColor.value);
+      });
+      els.styleColorHex.addEventListener("input", () => {
+        const hex = normalizeHexColor(els.styleColorHex.value);
+        els.styleColor.value = hex;
+      });
+      [els.replaceFind, els.replaceWith, els.replaceMatchCase, els.replaceWholeWord, els.replaceScope].forEach((el) => {
+        el.addEventListener("input", previewReplaceMatches);
+        el.addEventListener("change", previewReplaceMatches);
+      });
 
       els.fileInput.addEventListener("change", async (e) => {
         const file = e.target.files && e.target.files[0];
