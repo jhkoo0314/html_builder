@@ -78,7 +78,8 @@ async function runWithModelFallback({
     : timeoutMs;
   let budgetExhausted = false;
 
-  for (const modelName of candidates) {
+  for (let modelIndex = 0; modelIndex < candidates.length; modelIndex += 1) {
+    const modelName = candidates[modelIndex];
     const elapsed = Date.now() - startedAt;
     const remainingBudgetMs = useBudget ? (totalBudgetMs - elapsed) : perAttemptMs;
     if (useBudget && remainingBudgetMs < minRemainingMs) {
@@ -97,15 +98,20 @@ async function runWithModelFallback({
         ? getPerModelTimeoutMs(modelName, perAttemptMs, loopRemainingBudgetMs, modelTimeoutsMs)
         : getPerModelTimeoutMs(modelName, perAttemptMs, perAttemptMs, modelTimeoutsMs);
       const attemptStartedAt = Date.now();
+      const attemptIndex = attempts.length + 1;
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
         const result = await generateContentWithAbort(model, prompt, computedTimeoutMs);
         const text = result.response.text() || "";
         attempts.push({
+          attemptIndex,
+          modelIndex,
           model: modelName,
           ok: true,
           ms: Date.now() - attemptStartedAt,
           timeoutMs: computedTimeoutMs,
+          elapsedMs: Date.now() - startedAt,
+          remainingBudgetMs: useBudget ? loopRemainingBudgetMs : null,
         });
         return {
           ok: true,
@@ -119,12 +125,16 @@ async function runWithModelFallback({
         const overloaded = isOverloaded503(error);
         const reasonCode = mapReasonCode(error);
         attempts.push({
+          attemptIndex,
+          modelIndex,
           model: modelName,
           ok: false,
           ms: Date.now() - attemptStartedAt,
           timeoutMs: computedTimeoutMs,
           reasonCode,
           message: error.message,
+          elapsedMs: Date.now() - startedAt,
+          remainingBudgetMs: useBudget ? loopRemainingBudgetMs : null,
         });
         if (overloaded && !retried503) {
           retried503 = true;

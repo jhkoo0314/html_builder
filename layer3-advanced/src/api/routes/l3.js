@@ -38,6 +38,19 @@ function evaluateDesignQuality({ html, slideCount, navLogic, warnings }) {
   return { status: "PASS-DESIGN", warnings: mergedWarnings, reason: "OK" };
 }
 
+function summarizeAttempts(attempts) {
+  const list = Array.isArray(attempts) ? attempts : [];
+  const totals = { total: list.length, ok: 0, failed: 0 };
+  const byReason = {};
+  for (const item of list) {
+    if (item && item.ok) totals.ok += 1;
+    else totals.failed += 1;
+    const reason = item && item.reasonCode ? item.reasonCode : (item && item.ok ? "OK" : "UNKNOWN");
+    byReason[reason] = (byReason[reason] || 0) + 1;
+  }
+  return { totals, byReason };
+}
+
 router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
   try {
     const startedAt = Date.now();
@@ -126,6 +139,20 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       warnings: designQuality.warnings,
       qualityReason: designQuality.reason,
     };
+
+    const attemptSummary = summarizeAttempts(meta.llmAttempts);
+    console.info("[l3.build-direct]", JSON.stringify({
+      runId,
+      status,
+      styleMode: meta.styleMode,
+      creativeMode: meta.creativeMode,
+      slideCount: meta.slideCount,
+      whyFallback,
+      llmReasonCode: variantMeta.llmReasonCode || "",
+      llmRounds: Array.isArray(variantMeta.llmRounds) ? variantMeta.llmRounds : [],
+      attemptSummary,
+      timings: meta.timings,
+    }));
 
     return res.json({
       ok: true,
