@@ -1,7 +1,9 @@
 {
   "allowReplacementChar": [
     "AGENT.md",
-    "scripts/check-encoding.js"
+    "scripts/check-encoding.js",
+    "layer2-stable/scripts/check-encoding.js",
+    "layer3-advanced/scripts/check-encoding.js"
   ],
   "ignore": []
 }

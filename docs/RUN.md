@@ -1,4 +1,4 @@
-﻿# PRD v0.2 Final (RUN SSOT)
+# PRD v0.2 Final (RUN SSOT)
 
 본 문서는 현재 운영/개발의 SSOT다.
 Layer1(Report2Text)은 철회되었고, 시스템은 `launcher + layer2 + layer3`만으로 운영한다.
@@ -25,7 +25,6 @@ Layer1(Report2Text)은 철회되었고, 시스템은 `launcher + layer2 + layer3
 - `LAUNCHER_PORT=5170`
 - `L2_PORT=5172`
 - `L3_PORT=5173`
-- `ARTIFACTS_ROOT=<repo-root>/.artifacts`
 - `HEALTH_CHECK_INTERVAL_MS=2000`
 - `HEALTH_CHECK_TIMEOUT_MS=800`
 - `HEALTH_CHECK_STARTUP_GRACE_MS=30000`
@@ -53,23 +52,22 @@ Layer1(Report2Text)은 철회되었고, 시스템은 `launcher + layer2 + layer3
 ### 5.1 외부 UX(1-step)
 - 입력: 문서 업로드
 - 호출: `POST /api/run/l3/build-direct`
-- 출력: 고급 덱(`deck.html`)
+- 출력: 생성 HTML + 메타 + analysis 객체(응답 내 포함)
 
 ### 5.2 내부 파이프라인(2-step)
 1. `analyze()`
-- 문서 분석 후 구조화 결과를 `analysis.json`으로 저장
-- 동일 runId 하위 중간 산출물/캐시로 사용
+- 업로드 문서에서 텍스트 추출
+- 최소 분석 스키마 생성(`docTitle`, `docSummary`, `headings`, `slidePlan`, `warnings`, `stats`)
 
 2. `render()`
-- `analysis.json`을 입력으로 템플릿 렌더링 수행
-- 최종 `deck.html` 생성
+- `analysis` + 추출 텍스트를 입력으로 렌더 호출
+- 최종 HTML 생성 + 후처리 + fallback 처리
 
 규칙:
-- 두 단계는 동일 `runId`에서 수행
-- `render()` 실패 시 `analysis.json` 보존
-- 동일 `runId`에서 `render()` 재실행 가능해야 함
+- 두 단계는 하나의 요청 안에서 순차 실행
+- 파일 시스템 아티팩트(`analysis.json`, `deck.html`, `meta.json`)는 기본 생성하지 않음
 
-## 6. 분석 스키마 (analysis.json 최소 스키마)
+## 6. 분석 스키마 (응답 내 analysis 최소 스키마)
 ```json
 {
   "docTitle": "string",
@@ -86,81 +84,36 @@ Layer1(Report2Text)은 철회되었고, 시스템은 `launcher + layer2 + layer3
   "warnings": ["LOW_STRUCTURE"],
   "stats": {
     "extractedLength": 0,
-    "headingCount": 0
+    "headingCount": 0,
+    "sourceFileCount": 0
   }
 }
 ```
 
-제약 원칙:
-- 분석은 최소 제약만 강제: 필수 필드 + `evidenceHints`
-- 장수/레이아웃 과도 강제 금지(품질 저하 방지)
+## 7. 실패 처리 정책
+- analyze 실패: 즉시 실패 반환(`INVALID_INPUT`, `NO_CONTENT`, `ANALYZE_FAILED`)
+- render 실패: 즉시 실패 반환(`RENDER_FAILED`)
+- 렌더 내부 LLM 실패 시 기존 fallback 규칙은 유지
 
-## 7. 렌더링 정책 (MVP 선택)
-- Tailwind CDN을 L3 기본 렌더 기반으로 사용
-- 생성 경로 MVP: "템플릿/토큰 기반 코드 렌더"를 우선 채택
-- LLM HTML 직접 생성은 선택 옵션(후속)으로 유지
+## 8. L3 응답 메타 SSOT (Direct)
+- top-level: `ok`, `runId`, `mode`, `status`, `html`, `analysis`, `htmlVariants`
+- `htmlVariants[0].meta.timings`: `analyzeMs`, `renderMs`, `totalMs`, `generateMs`, `repairMs`
+- `htmlVariants[0].meta.stats`: `extractedLength`, `headingCount`, `slideCount`
 
-## 8. 실패 처리 정책
-### 8.1 정책 옵션
-- 옵션 A: analyze 실패 시 즉시 실패 반환
-- 옵션 B: analyze 실패 시 최소 규칙 기반 fallback analysis 생성 후 render 진행
+판정 규칙:
+- `status == "SUCCESS"` and `slideCount >= 2` -> PASS
+- `status == "FALLBACK"` -> FALLBACK
+- 그 외 -> FAIL
 
-### 8.2 MVP 선택
-- 기본은 옵션 A(분석 실패 시 실패 반환)
-- 단, 실패 원인/입력 요약을 `meta.json`에 기록
-- render 실패 시: fallback 렌더 경로 시도 + `analysis.json` 보존
-
-## 9. Artifacts SSOT
-### 9.1 L2 (Stable)
-- `{runId}/layer2/deck.html`
-- `{runId}/layer2/meta.json`
-
-### 9.2 L3 (Advanced)
-- `{runId}/layer3/analysis.json`
-- `{runId}/layer3/deck.html`
-- `{runId}/layer3/meta.json`
-
-`meta.json` 최소 타이밍 필드:
-- `analyzeMs`
-- `renderMs`
-- `totalMs`
-
-launcher UI 결과 카드:
-- `deck.html`, `meta.json`, `analysis.json` 링크 노출(analysis는 디버그 용도)
-
-## 10. L3 검증 판정 SSOT (Direct)
-| 판정 | 기준 |
-|---|---|
-| `PASS-FUNCTIONAL` | artifactsRoot/runId가 일관되고, `analysis.json`/`deck.html`/`meta.json`이 모두 존재하며 구조가 유효 |
-| `PASS-META` | `meta.json`이 운영 스키마 필수 필드를 포함 |
-| `PARTIAL` | `PASS-FUNCTIONAL`은 통과했지만 `PASS-META`를 만족하지 못함 |
-| `FAIL` | runId 미생성, 필수 산출물 미생성, JSON 파싱 실패, slide 구조 불량 등 기능 실패 |
-
-### 10.1 PASS-FUNCTIONAL 최소 조건
-- artifactsRoot 일관성(health 응답과 파일 시스템 경로 일치)
-- runId 존재
-- `{runId}/layer3/analysis.json` 존재 + JSON.parse 성공
-- `{runId}/layer3/deck.html` 존재 + `<section class="slide"` 개수 `>=2`
-- `{runId}/layer3/meta.json` 존재 + JSON.parse 성공
-- `meta.status == "SUCCESS"` (동등 필드 허용)
-
-### 10.2 PASS-META 최소 조건
-- top-level: `runId`, `mode`, `status`, `timings`, `stats`, `warnings`
-- `timings`: `analyzeMs`, `renderMs`, `totalMs`
-- `stats`: `extractedLength`, `headingCount`
-- `stats.slideCount`: 권장(필수 아님)
-
-slideCount 정책:
-- `meta.stats.slideCount` 누락 시 `FAIL`이 아니라 `PARTIAL`로 분류한다.
-- 이 경우 점검 결과에 `effectiveSlideCount`(deck.html 계산값)를 반드시 포함한다.
-
-## 11. 품질 가드레일 (80점 LTS)
+## 9. 품질 가드레일 (80점 LTS)
 - 분석: 스키마 및 근거 힌트 중심 최소 제약
 - 생성: 템플릿 + 테마 토큰 중심 렌더
 - 후처리: 가독성(폰트/대비/행간), 밀도(텍스트량), 구조(내비게이션) 점검
 - L2 영향 0: L3 변경이 L2 경로/로직에 영향을 주지 않아야 함
 
-## 12. 변경 이력
+## 10. 변경 이력
 - 2026-02-27: Layer1 철회, L2/L3 체계 전환
-- 2026-02-27: L3 Direct only + 내부 Analyze Cache/Render 2-step SSOT 확정
+- 2026-02-27: L3 Direct only + 내부 Analyze/Render 2-step SSOT 확정
 - 2026-02-27: L3 검증 규칙을 PASS-FUNCTIONAL / PASS-META 분리 기준으로 확정
+- 2026-02-27: L3 Direct는 파일 아티팩트 비생성(in-memory) 운영으로 전환
+

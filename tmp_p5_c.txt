@@ -1,4 +1,0 @@
-﻿# Strategy
-Three pillars: product, sales, ops.
-## KPI
-NPS up, churn down.

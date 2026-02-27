@@ -1,9 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const { resolveArtifactsRoot } = require("../src/l3/artifacts");
-
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
@@ -43,12 +39,10 @@ async function main() {
   if (status !== "SUCCESS") fail(`Unexpected status=${status}`);
   if (slideCount < 2) fail(`slideCount too small: ${slideCount}`);
 
-  const artifactsRoot = resolveArtifactsRoot(process.env.ARTIFACTS_ROOT);
-  const layer3Dir = path.join(artifactsRoot, runId, "layer3");
-  const deckPath = path.join(layer3Dir, "deck.html");
-  const metaPath = path.join(layer3Dir, "meta.json");
-  if (!fs.existsSync(deckPath)) fail(`Missing artifact: ${deckPath}`);
-  if (!fs.existsSync(metaPath)) fail(`Missing artifact: ${metaPath}`);
+  const analysis = json.analysis || {};
+  if (!analysis || !analysis.docTitle || !Array.isArray(analysis.slidePlan)) {
+    fail("Missing analysis payload");
+  }
 
   process.stdout.write(`PASS runId=${runId} status=${status} slideCount=${slideCount}\n`);
 }

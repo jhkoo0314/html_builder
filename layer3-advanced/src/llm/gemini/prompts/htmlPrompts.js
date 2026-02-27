@@ -24,7 +24,10 @@ function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, st
     "Use <section class=\"slide\"> for each slide and keep at least 2 slides.",
     "Use Tailwind CDN utility classes for styling.",
     tableHint
-      ? "Purpose mode table: emphasize structured tabular presentation for key comparisons, metrics, and summaries."
+      ? "Purpose mode table: prefer tables only for comparison/metric-heavy sections, but keep overall deck mixed with narrative, cards, and summary slides."
+      : "",
+    tableHint
+      ? "Target balance in table mode: roughly 20-50% of slides may use tables. Avoid converting every slide into a table."
       : "",
     extremeHint
       ? "Extreme mode: push visual experimentation aggressively with bold layouts and unusual compositions while preserving readability."
@@ -51,6 +54,7 @@ function createRepairPrompt(rawHtml) {
     "If slides are fewer than 2 or <section class=\"slide\"> is missing, restructure into 2+ section.slide blocks.",
     "Do not change slide content unless required to fix breakage.",
     "Preserve slide count unless slides are empty or structurally broken.",
+    "If the deck overuses one layout (for example all-table slides), diversify layouts while preserving key content.",
     "Return complete HTML only.",
     "Input:",
     rawHtml,

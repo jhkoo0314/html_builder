@@ -36,7 +36,29 @@ function createTinySmokePrompt() {
   ].join("\n");
 }
 
-function buildResponse({ html, mode, renderMode, extractionMethod, finalizeApplied, repairAttempted, whyFallback, meta, sourceFiles, title }) {
+function countTableSlides(html) {
+  const sectionRegex = /<section\b[\s\S]*?<\/section>/gi;
+  const sections = String(html || "").match(sectionRegex) || [];
+  if (!sections.length) return 0;
+  let tableSlides = 0;
+  sections.forEach((section) => {
+    if (/<table\b/i.test(section)) tableSlides += 1;
+  });
+  return tableSlides;
+}
+
+function buildResponse({
+  html,
+  mode,
+  renderMode,
+  extractionMethod,
+  finalizeApplied,
+  repairAttempted,
+  whyFallback,
+  meta,
+  sourceFiles,
+  title,
+}) {
   return {
     mode,
     sourceFiles,
@@ -64,10 +86,21 @@ function buildResponse({ html, mode, renderMode, extractionMethod, finalizeAppli
   };
 }
 
-async function generatePipeline({ files, designPrompt = "", creativeMode, styleMode = "creative", purposeMode = "general" }) {
+async function generatePipeline({
+  files,
+  combinedText = "",
+  sourceFiles = [],
+  designPrompt = "",
+  creativeMode,
+  styleMode = "creative",
+  purposeMode = "general",
+}) {
   const started = Date.now();
   const env = getEnv();
-  const sourceFiles = (files || []).map((f) => f.originalname);
+  const resolvedSourceFiles =
+    Array.isArray(sourceFiles) && sourceFiles.length
+      ? sourceFiles
+      : (files || []).map((f) => f.originalname);
   let repairAttempted = false;
   const mode = String(styleMode || "creative").toLowerCase() === "extreme" ? "extreme" : "creative";
   const purpose = String(purposeMode || "general").toLowerCase() === "table" ? "table" : "general";
@@ -76,13 +109,17 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
       ? creativeMode
       : DEFAULTS.CREATIVE_MODE_DEFAULT;
 
-  if (!files || files.length === 0) {
+  if ((!files || files.length === 0) && !String(combinedText || "").trim()) {
     throw new Error("No documents uploaded.");
   }
 
   const run = async () => {
-    const parsed = await extractUploadedTexts(files);
-    if (!parsed.combinedText.trim()) {
+    let parsedText = String(combinedText || "");
+    if (!parsedText.trim()) {
+      const parsed = await extractUploadedTexts(files);
+      parsedText = String(parsed.combinedText || "");
+    }
+    if (!parsedText.trim()) {
       throw Object.assign(new Error("텍스트 추출 실패"), { code: "EMPTY_TEXT" });
     }
 
@@ -105,13 +142,13 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
       creativeMode: creativeEnabled,
       styleMode: mode,
       purposeMode: purpose,
-      // Keep legacy semantics for compatibility with existing dashboards.
       rawLength: 0,
       extractedLength: 0,
       slideCount: 0,
       navLogic: false,
       timings: { totalMs: 0, generateMs: 0, repairMs: 0 },
     };
+
     function setLlmInputMeta(text) {
       baseMeta.llmInputLength = String(text || "").length;
       baseMeta.llmInputHash = shortHash(text);
@@ -119,6 +156,7 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
       baseMeta.ssotInputHash = baseMeta.llmInputHash;
       baseMeta.extractionMethodFinal = "llm-prompt";
     }
+
     function setFallbackInputMeta(text) {
       baseMeta.fallbackInputLength = String(text || "").length;
       baseMeta.fallbackInputHash = shortHash(text);
@@ -128,8 +166,12 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
     }
 
     if (!env.GEMINI_API_KEY) {
-      setFallbackInputMeta(parsed.combinedText);
-      const html = renderHouseFallback({ title: "Fallback Deck", combinedText: parsed.combinedText, sourceFiles });
+      setFallbackInputMeta(parsedText);
+      const html = renderHouseFallback({
+        title: "Fallback Deck",
+        combinedText: parsedText,
+        sourceFiles: resolvedSourceFiles,
+      });
       baseMeta.slideCount = countSlides(html);
       baseMeta.timings.totalMs = Date.now() - started;
       return buildResponse({
@@ -141,13 +183,13 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
         repairAttempted,
         whyFallback: "NO_API_KEY",
         meta: baseMeta,
-        sourceFiles,
+        sourceFiles: resolvedSourceFiles,
         title: "Fallback Deck",
       });
     }
 
     const prompts = createHtmlPrompts({
-      combinedText: parsed.combinedText,
+      combinedText: parsedText,
       title: "Generated Deck",
       designPrompt: typeof designPrompt === "string" ? designPrompt.trim() : "",
       creativeMode: String(creativeEnabled),
@@ -178,8 +220,12 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
     baseMeta.timings.generateMs = Date.now() - genStart;
 
     if (!llmResult.ok) {
-      setFallbackInputMeta(parsed.combinedText);
-      const html = renderHouseFallback({ title: "Fallback Deck", combinedText: parsed.combinedText, sourceFiles });
+      setFallbackInputMeta(parsedText);
+      const html = renderHouseFallback({
+        title: "Fallback Deck",
+        combinedText: parsedText,
+        sourceFiles: resolvedSourceFiles,
+      });
       baseMeta.slideCount = countSlides(html);
       baseMeta.timings.totalMs = Date.now() - started;
       return buildResponse({
@@ -191,7 +237,7 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
         repairAttempted,
         whyFallback: llmResult.reasonCode || "LLM_ERROR",
         meta: baseMeta,
-        sourceFiles,
+        sourceFiles: resolvedSourceFiles,
         title: "Fallback Deck",
       });
     }
@@ -206,7 +252,7 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
 
     if (!html) {
       const repairStartedAt = Date.now();
-      const repairedRaw = await attemptRepair({ env, raw, parsedText: parsed.combinedText, enabled: true });
+      const repairedRaw = await attemptRepair({ env, raw, enabled: true });
       baseMeta.timings.repairMs += Date.now() - repairStartedAt;
       if (repairedRaw) {
         repairAttempted = true;
@@ -217,8 +263,12 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
     }
 
     if (!html) {
-      setFallbackInputMeta(parsed.combinedText);
-      const fallback = renderHouseFallback({ title: "Fallback Deck", combinedText: parsed.combinedText, sourceFiles });
+      setFallbackInputMeta(parsedText);
+      const fallback = renderHouseFallback({
+        title: "Fallback Deck",
+        combinedText: parsedText,
+        sourceFiles: resolvedSourceFiles,
+      });
       baseMeta.slideCount = countSlides(fallback);
       baseMeta.timings.totalMs = Date.now() - started;
       return buildResponse({
@@ -230,7 +280,7 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
         repairAttempted,
         whyFallback: "EXTRACTION_NONE",
         meta: baseMeta,
-        sourceFiles,
+        sourceFiles: resolvedSourceFiles,
         title: "Fallback Deck",
       });
     }
@@ -238,12 +288,17 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
     const finalized = finalizeHtmlDocument(html);
     const nav = ensureInteractiveDeckHtml(finalized.html);
     const slideCount = countSlides(nav.html);
+    const tableSlideCount = countTableSlides(nav.html);
+    const tableSlideRatio = slideCount > 0 ? tableSlideCount / slideCount : 0;
     baseMeta.slideCount = slideCount;
     baseMeta.navLogic = true;
     baseMeta.extractionMethodFinal = extractionMethod || "none";
+    baseMeta.tableSlideCount = tableSlideCount;
+    baseMeta.tableSlideRatio = Number(tableSlideRatio.toFixed(3));
 
     const failedByContract = slideCount < DEFAULTS.MIN_SLIDES_REQUIRED;
     const failedByStrictMeaning = !isMeaningfulHtml(nav.html);
+    const tableOverused = purpose === "table" && slideCount >= 4 && tableSlideRatio > 0.7;
     const needsRepair = creativeEnabled ? failedByContract : (failedByStrictMeaning || failedByContract);
 
     if (needsRepair) {
@@ -260,10 +315,13 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
           const slideCount2 = countSlides(nav2.html);
           baseMeta.slideCount = slideCount2;
           baseMeta.navLogic = true;
-          baseMeta.extractionMethodFinal = repairedExtracted.extractionMethod || extractionMethod || "none";
+          baseMeta.extractionMethodFinal =
+            repairedExtracted.extractionMethod || extractionMethod || "none";
           const repairedContractOk = slideCount2 >= DEFAULTS.MIN_SLIDES_REQUIRED;
           const repairedMeaningOk = isMeaningfulHtml(nav2.html);
-          const repairedAccepted = creativeEnabled ? repairedContractOk : (repairedMeaningOk && repairedContractOk);
+          const repairedAccepted = creativeEnabled
+            ? repairedContractOk
+            : (repairedMeaningOk && repairedContractOk);
           if (repairedAccepted) {
             baseMeta.timings.totalMs = Date.now() - started;
             return buildResponse({
@@ -275,14 +333,18 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
               repairAttempted,
               whyFallback: "",
               meta: baseMeta,
-              sourceFiles,
+              sourceFiles: resolvedSourceFiles,
               title: "Generated Deck",
             });
           }
         }
       }
-      setFallbackInputMeta(parsed.combinedText);
-      const fallback = renderHouseFallback({ title: "Fallback Deck", combinedText: parsed.combinedText, sourceFiles });
+      setFallbackInputMeta(parsedText);
+      const fallback = renderHouseFallback({
+        title: "Fallback Deck",
+        combinedText: parsedText,
+        sourceFiles: resolvedSourceFiles,
+      });
       baseMeta.slideCount = countSlides(fallback);
       baseMeta.timings.totalMs = Date.now() - started;
       return buildResponse({
@@ -294,9 +356,48 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
         repairAttempted,
         whyFallback: failedByContract ? "NO_SLIDES" : "LOW_MEANINGFULNESS",
         meta: baseMeta,
-        sourceFiles,
+        sourceFiles: resolvedSourceFiles,
         title: "Fallback Deck",
       });
+    }
+
+    if (tableOverused && !repairAttempted) {
+      repairAttempted = true;
+      const repairStartedAt = Date.now();
+      const repairedRaw = await attemptRepair({ env, raw: nav.html, enabled: true });
+      baseMeta.timings.repairMs += Date.now() - repairStartedAt;
+      if (repairedRaw) {
+        const repairedExtracted = extractHtmlFromText(repairedRaw);
+        const repairedHtml = repairedExtracted.html || repairedRaw;
+        const finalized2 = finalizeHtmlDocument(repairedHtml);
+        const nav2 = ensureInteractiveDeckHtml(finalized2.html);
+        const slideCount2 = countSlides(nav2.html);
+        const tableSlides2 = countTableSlides(nav2.html);
+        const tableRatio2 = slideCount2 > 0 ? tableSlides2 / slideCount2 : 0;
+        // Accept only if structure is valid and table overuse is reduced.
+        if (slideCount2 >= DEFAULTS.MIN_SLIDES_REQUIRED && tableRatio2 <= 0.7) {
+          baseMeta.slideCount = slideCount2;
+          baseMeta.navLogic = true;
+          baseMeta.extractionMethodFinal =
+            repairedExtracted.extractionMethod || extractionMethod || "none";
+          baseMeta.tableSlideCount = tableSlides2;
+          baseMeta.tableSlideRatio = Number(tableRatio2.toFixed(3));
+          baseMeta.timings.totalMs = Date.now() - started;
+          return buildResponse({
+            html: nav2.html,
+            mode: "llm-gemini",
+            renderMode: "repair",
+            extractionMethod: repairedExtracted.extractionMethod || extractionMethod,
+            finalizeApplied: finalized2.finalizeApplied,
+            repairAttempted,
+            whyFallback: "",
+            meta: baseMeta,
+            sourceFiles: resolvedSourceFiles,
+            title: "Generated Deck",
+          });
+        }
+      }
+      // If diversification repair fails, keep original successful output instead of fallback.
     }
 
     baseMeta.timings.totalMs = Date.now() - started;
@@ -309,7 +410,7 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
       repairAttempted,
       whyFallback: "",
       meta: baseMeta,
-      sourceFiles,
+      sourceFiles: resolvedSourceFiles,
       title: "Generated Deck",
     });
   };
@@ -320,7 +421,6 @@ async function generatePipeline({ files, designPrompt = "", creativeMode, styleM
 async function attemptRepair({ env, raw, enabled }) {
   if (!enabled || !env.GEMINI_API_KEY) return "";
   const prompt = createRepairPrompt(raw);
-  const repairStart = Date.now();
   const repaired = await runWithModelFallback({
     apiKey: env.GEMINI_API_KEY,
     candidates: DEFAULTS.MODEL_CANDIDATES,
@@ -328,7 +428,6 @@ async function attemptRepair({ env, raw, enabled }) {
     prompt,
     timeoutMs: DEFAULTS.LLM_REPAIR_TIMEOUT_MS,
   });
-  void repairStart;
   return repaired.ok ? repaired.text : "";
 }
 

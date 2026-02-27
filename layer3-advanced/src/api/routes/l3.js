@@ -2,14 +2,9 @@
 
 const express = require("express");
 const multer = require("multer");
-const { generatePipeline } = require("../../pipelines/generatePipeline");
+const crypto = require("crypto");
+const { analyzeDirect, renderDirect } = require("../../l3/twoStep");
 const { countSlides } = require("../../html/postprocess/meaningful");
-const {
-  ensureArtifactsRoot,
-  createRunId,
-  writeLayer3Artifacts,
-  toPublicPath,
-} = require("../../l3/artifacts");
 const { L3BuildError } = require("../../l3/errors");
 
 const router = express.Router();
@@ -17,20 +12,41 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
   try {
+    const startedAt = Date.now();
     const files = req.files || [];
     if (!files.length) {
       throw new L3BuildError("INVALID_INPUT", "No documents uploaded.", 400);
     }
 
-    const artifactsRoot = ensureArtifactsRoot(process.env.ARTIFACTS_ROOT);
-    const runId = createRunId();
-    const result = await generatePipeline({
-      files,
-      designPrompt: typeof req.body.designPrompt === "string" ? req.body.designPrompt : "",
-      creativeMode: true,
-      styleMode: String(req.body.styleMode || "creative"),
-      purposeMode: String(req.body.purposeMode || "general"),
-    });
+    const runId = `${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+    let analyzed;
+    let analyzeMs = 0;
+    try {
+      const analyzeStart = Date.now();
+      analyzed = await analyzeDirect({ files });
+      analyzeMs = Date.now() - analyzeStart;
+    } catch (error) {
+      if (error instanceof L3BuildError) throw error;
+      throw new L3BuildError("ANALYZE_FAILED", error.message || "Analyze failed", 500);
+    }
+
+    let result;
+    let renderMs = 0;
+    try {
+      const renderStart = Date.now();
+      result = await renderDirect({
+        analysis: analyzed.analysis,
+        combinedText: analyzed.combinedText,
+        sourceFiles: analyzed.sourceFiles,
+        designPrompt: typeof req.body.designPrompt === "string" ? req.body.designPrompt : "",
+        styleMode: String(req.body.styleMode || "creative"),
+        purposeMode: String(req.body.purposeMode || "general"),
+      });
+      renderMs = Date.now() - renderStart;
+    } catch (error) {
+      if (error instanceof L3BuildError) throw error;
+      throw new L3BuildError("RENDER_FAILED", error.message || "Render failed", 500);
+    }
     const html = result.html || "";
     if (!html.trim()) {
       throw new L3BuildError("RENDER_FAILED", "Pipeline returned empty html.", 500);
@@ -56,7 +72,9 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       purposeMode: variantMeta.purposeMode || "general",
       slideCount: effectiveSlideCount,
       timings: {
-        totalMs: Number(timings.totalMs || 0),
+        analyzeMs,
+        renderMs,
+        totalMs: Date.now() - startedAt,
         generateMs: Number(timings.generateMs || 0),
         repairMs: Number(timings.repairMs || 0),
       },
@@ -72,13 +90,6 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       warnings: Array.isArray(variantMeta.warnings) ? variantMeta.warnings : [],
     };
 
-    const saved = writeLayer3Artifacts({
-      artifactsRoot,
-      runId,
-      html,
-      meta,
-    });
-
     return res.json({
       ok: true,
       runId,
@@ -89,11 +100,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       html,
       whyFallback,
       llmAttempts: meta.llmAttempts,
-      artifacts: {
-        analysis: saved.analysisPath ? toPublicPath(saved.analysisPath, artifactsRoot) : null,
-        deck: toPublicPath(saved.deckPath, artifactsRoot),
-        meta: toPublicPath(saved.metaPath, artifactsRoot),
-      },
+      analysis: analyzed.analysis,
       htmlVariants: [
         {
           id: "v1",

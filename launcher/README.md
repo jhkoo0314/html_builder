@@ -1,4 +1,4 @@
-﻿# launcher
+# launcher
 
 Single entrypoint for UI + API Gateway + Process Manager.
 
@@ -10,7 +10,6 @@ Single entrypoint for UI + API Gateway + Process Manager.
 ## Env SSOT
 - `LAUNCHER_PORT`
 - `L2_PORT`, `L3_PORT`
-- `ARTIFACTS_ROOT` (launcher가 L2/L3에 동일 값 주입)
 - `HEALTH_CHECK_*`, `RESTART_*`
 
 ## Gateway Routes
@@ -22,7 +21,6 @@ Single entrypoint for UI + API Gateway + Process Manager.
 - `GET /api/status`
 - `GET /api/logs?service=L2|L3`
 
-## Artifact SSOT
-- L2: `{runId}/layer2/deck.html`, `meta.json`
-- L3: `{runId}/layer3/analysis.json`, `deck.html`, `meta.json`
-- launcher UI 결과 카드에는 `analysis.json` 링크를 디버그용으로 노출한다.
+## Response SSOT
+- L2/L3 모두 생성 결과는 API 응답(JSON + html)으로 확인한다.
+- L3 Direct는 기본적으로 파일 아티팩트를 생성하지 않고, `analysis`는 응답 payload에 포함한다.

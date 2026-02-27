@@ -14,3 +14,7 @@ yarn-error.log*
 .vscode/
 *.swp
 *.bak
+
+# Temporary and Response files
+tmp_*
+resp_tmp_*

@@ -1,4 +1,4 @@
-﻿# META_SCHEMA.md
+# META_SCHEMA.md
 
 `v0.1.0-stable.1` 기준 운영 메타(SSOT) 문서.
 목적: 응답 메타만으로 성공/실패를 동일 규칙으로 판정한다.

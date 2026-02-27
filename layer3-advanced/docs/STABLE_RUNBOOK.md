@@ -1,4 +1,4 @@
-﻿# L3 Advanced Runbook
+# L3 Advanced Runbook
 
 Layer3 Advanced 운영 런북.
 현재 SSOT는 Direct only + 내부 2-step(`analyze -> render`)이다.
