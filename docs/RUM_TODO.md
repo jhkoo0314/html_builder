@@ -64,41 +64,45 @@
 - [x] health 상태와 결과 미리보기/다운로드가 노출된다.
 
 ### Phase 5. L3 구현 (Analyze Cache + Render)
-- [ ] P5-1. Direct API 계약 확정
-- [ ] `POST /api/l3/build-direct` 요청/응답 스키마 고정
-- [ ] 오류코드 표준화(`INVALID_INPUT`, `NO_CONTENT`, `ANALYZE_FAILED`, `RENDER_FAILED`, `UPSTREAM_*`)
+- [x] P5-1. Direct API 1차 계약 구현(MVP v1)
+- [x] `POST /api/l3/build-direct` 요청/응답 스키마 1차 반영
+- [x] 오류코드 1차 반영(`INVALID_INPUT`, `NO_CONTENT`, `ANALYZE_FAILED`, `RENDER_FAILED`, `ARTIFACTS_ROOT_MISSING`)
 
-- [ ] P5-2. analyze 구현 + 캐시 저장
-- [ ] analyze 결과를 `{runId}/layer3/analysis.json`으로 저장
-- [ ] analysis.json 스키마 검증(필수 필드 + evidenceHints)
-- [ ] analyze 실패 정책(MVP: 실패 반환) 적용
+- [x] P5-2. analyze 구현 + 캐시 저장
+- [x] analyze 결과를 `{runId}/layer3/analysis.json`으로 저장
+- [x] analysis.json 스키마 검증(필수 필드 + evidenceHints)
+- [x] analyze 실패 정책(MVP: 실패 반환) 적용
 
-- [ ] P5-3. render 구현 (Tailwind templates + theme tokens)
-- [ ] analysis.json 입력 기반 템플릿 렌더
-- [ ] 테마 토큰(색/타이포/간격/반경/그림자) 적용
-- [ ] `{runId}/layer3/deck.html` 생성
+- [x] P5-3. render 구현 1차 (Tailwind templates + theme tokens)
+- [x] analysis.json 입력 기반 템플릿 렌더
+- [x] 테마 토큰 1차 적용(색/타이포/간격)
+- [x] `{runId}/layer3/deck.html` 생성
 
 - [ ] P5-4. postprocess/guardrails
 - [ ] 가독성 규칙(폰트/대비/행간) 점검
 - [ ] 밀도 규칙(텍스트량/요소수) 점검
 - [ ] 구조 규칙(내비게이션/슬라이드 의미 단위) 점검
 
-- [ ] P5-5. 산출물/메타 저장 표준화
-- [ ] `{runId}/layer3/meta.json` 저장
-- [ ] 타이밍 필드 `analyzeMs`, `renderMs`, `totalMs` 기록
+- [x] P5-5. 산출물/메타 저장 1차 표준화
+- [x] `{runId}/layer3/meta.json` 저장
+- [x] 타이밍 필드 `analyzeMs`, `renderMs`, `totalMs` 기록
 - [ ] 실패 시에도 `analysis.json` 보존(특히 render 실패)
 
 완료기준
-- [ ] direct 실행 시 `analysis.json -> deck.html` 2-step이 동일 runId에서 수행된다.
-- [ ] L3 산출물 3종(`analysis.json`, `deck.html`, `meta.json`)이 규격대로 저장된다.
-- [ ] render 재실행 시 analysis 캐시 재사용이 가능하다.
-- [ ] L2 경로/결과에 영향이 없다.
+- [x] PASS-FUNCTIONAL 충족: direct 실행 시 `analysis.json -> deck.html` 2-step이 동일 runId에서 수행된다.
+- [x] PASS-FUNCTIONAL 충족: L3 산출물 3종(`analysis.json`, `deck.html`, `meta.json`)이 규격대로 저장된다.
+- [ ] PASS-FUNCTIONAL 충족: render 재실행 시 analysis 캐시 재사용이 가능하다.
+- [x] PASS-FUNCTIONAL 충족: L2 경로/결과에 영향이 없다.
+- [x] PASS-META 충족: `meta.json` 필수 필드(`runId`,`mode`,`status`,`timings`,`stats`,`warnings`)가 존재한다.
+- [x] PASS-META 충족: `timings.analyzeMs`,`timings.renderMs`,`timings.totalMs`가 존재한다.
+- [x] `stats.slideCount` 누락 시 FAIL이 아닌 PARTIAL로 분류하고 `effectiveSlideCount`를 결과에 기록한다.
 
 검증내용
-- [ ] 기능: direct 샘플 3건 이상 생성 성공
+- [x] 기능: direct 샘플 3건 생성 성공
 - [ ] 캐시 재사용: 동일 runId에서 render-only 재실행 성공
-- [ ] 메타 검증: `analyzeMs`, `renderMs`, `totalMs` 누락 없음
-- [ ] 무영향성: `POST /api/run/l2/build` 정상 동작 유지
+- [x] 메타 검증: PASS-META 필수 필드 누락 없음
+- [x] slideCount 검증: `meta.stats.slideCount` 존재 여부 + `effectiveSlideCount`(deck 계산값) 기록
+- [x] 무영향성: `POST /api/run/l2/build` 정상 동작 유지
 
 ### Phase 6. 회귀 검증 (Phase 5 완료 후)
 - [ ] launcher 경유 L2 build E2E 검증
@@ -137,3 +141,4 @@
 ## 4) 메모
 - From-L1 연결은 RFC 보류 상태로 유지한다.
 - Layer1 재도입 필요 시 신규 RFC 승인 후 범위를 다시 연다.
+- meta slideCount 누락은 기능 실패가 아니라 PARTIAL로 분류한다(운영 스키마 개선 대상).

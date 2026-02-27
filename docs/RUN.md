@@ -128,12 +128,39 @@ Layer1(Report2Text)은 철회되었고, 시스템은 `launcher + layer2 + layer3
 launcher UI 결과 카드:
 - `deck.html`, `meta.json`, `analysis.json` 링크 노출(analysis는 디버그 용도)
 
-## 10. 품질 가드레일 (80점 LTS)
+## 10. L3 검증 판정 SSOT (Direct)
+| 판정 | 기준 |
+|---|---|
+| `PASS-FUNCTIONAL` | artifactsRoot/runId가 일관되고, `analysis.json`/`deck.html`/`meta.json`이 모두 존재하며 구조가 유효 |
+| `PASS-META` | `meta.json`이 운영 스키마 필수 필드를 포함 |
+| `PARTIAL` | `PASS-FUNCTIONAL`은 통과했지만 `PASS-META`를 만족하지 못함 |
+| `FAIL` | runId 미생성, 필수 산출물 미생성, JSON 파싱 실패, slide 구조 불량 등 기능 실패 |
+
+### 10.1 PASS-FUNCTIONAL 최소 조건
+- artifactsRoot 일관성(health 응답과 파일 시스템 경로 일치)
+- runId 존재
+- `{runId}/layer3/analysis.json` 존재 + JSON.parse 성공
+- `{runId}/layer3/deck.html` 존재 + `<section class="slide"` 개수 `>=2`
+- `{runId}/layer3/meta.json` 존재 + JSON.parse 성공
+- `meta.status == "SUCCESS"` (동등 필드 허용)
+
+### 10.2 PASS-META 최소 조건
+- top-level: `runId`, `mode`, `status`, `timings`, `stats`, `warnings`
+- `timings`: `analyzeMs`, `renderMs`, `totalMs`
+- `stats`: `extractedLength`, `headingCount`
+- `stats.slideCount`: 권장(필수 아님)
+
+slideCount 정책:
+- `meta.stats.slideCount` 누락 시 `FAIL`이 아니라 `PARTIAL`로 분류한다.
+- 이 경우 점검 결과에 `effectiveSlideCount`(deck.html 계산값)를 반드시 포함한다.
+
+## 11. 품질 가드레일 (80점 LTS)
 - 분석: 스키마 및 근거 힌트 중심 최소 제약
 - 생성: 템플릿 + 테마 토큰 중심 렌더
 - 후처리: 가독성(폰트/대비/행간), 밀도(텍스트량), 구조(내비게이션) 점검
 - L2 영향 0: L3 변경이 L2 경로/로직에 영향을 주지 않아야 함
 
-## 11. 변경 이력
+## 12. 변경 이력
 - 2026-02-27: Layer1 철회, L2/L3 체계 전환
 - 2026-02-27: L3 Direct only + 내부 Analyze Cache/Render 2-step SSOT 확정
+- 2026-02-27: L3 검증 규칙을 PASS-FUNCTIONAL / PASS-META 분리 기준으로 확정

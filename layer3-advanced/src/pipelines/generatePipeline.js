@@ -64,11 +64,17 @@ function buildResponse({ html, mode, renderMode, extractionMethod, finalizeAppli
   };
 }
 
-async function generatePipeline({ files }) {
+async function generatePipeline({ files, designPrompt = "", creativeMode, styleMode = "creative", purposeMode = "general" }) {
   const started = Date.now();
   const env = getEnv();
   const sourceFiles = (files || []).map((f) => f.originalname);
   let repairAttempted = false;
+  const mode = String(styleMode || "creative").toLowerCase() === "extreme" ? "extreme" : "creative";
+  const purpose = String(purposeMode || "general").toLowerCase() === "table" ? "table" : "general";
+  const creativeEnabled =
+    typeof creativeMode === "boolean"
+      ? creativeMode
+      : DEFAULTS.CREATIVE_MODE_DEFAULT;
 
   if (!files || files.length === 0) {
     throw new Error("No documents uploaded.");
@@ -96,6 +102,9 @@ async function generatePipeline({ files }) {
       ssotInputHash: "",
       extractionMethodFinal: "none",
       networkDiagnostics: null,
+      creativeMode: creativeEnabled,
+      styleMode: mode,
+      purposeMode: purpose,
       // Keep legacy semantics for compatibility with existing dashboards.
       rawLength: 0,
       extractedLength: 0,
@@ -137,7 +146,14 @@ async function generatePipeline({ files }) {
       });
     }
 
-    const prompts = createHtmlPrompts({ combinedText: parsed.combinedText, title: "Generated Deck" });
+    const prompts = createHtmlPrompts({
+      combinedText: parsed.combinedText,
+      title: "Generated Deck",
+      designPrompt: typeof designPrompt === "string" ? designPrompt.trim() : "",
+      creativeMode: String(creativeEnabled),
+      styleMode: mode,
+      purposeMode: purpose,
+    });
     const llmPrompt = baseMeta.tinySmokeEnabled
       ? createTinySmokePrompt()
       : `${prompts.system}\n\n${prompts.user}`;
@@ -226,7 +242,11 @@ async function generatePipeline({ files }) {
     baseMeta.navLogic = true;
     baseMeta.extractionMethodFinal = extractionMethod || "none";
 
-    if (!isMeaningfulHtml(nav.html) || slideCount < DEFAULTS.MIN_SLIDES_REQUIRED) {
+    const failedByContract = slideCount < DEFAULTS.MIN_SLIDES_REQUIRED;
+    const failedByStrictMeaning = !isMeaningfulHtml(nav.html);
+    const needsRepair = creativeEnabled ? failedByContract : (failedByStrictMeaning || failedByContract);
+
+    if (needsRepair) {
       if (!repairAttempted) {
         repairAttempted = true;
         const repairStartedAt = Date.now();
@@ -241,7 +261,10 @@ async function generatePipeline({ files }) {
           baseMeta.slideCount = slideCount2;
           baseMeta.navLogic = true;
           baseMeta.extractionMethodFinal = repairedExtracted.extractionMethod || extractionMethod || "none";
-          if (isMeaningfulHtml(nav2.html) && slideCount2 >= DEFAULTS.MIN_SLIDES_REQUIRED) {
+          const repairedContractOk = slideCount2 >= DEFAULTS.MIN_SLIDES_REQUIRED;
+          const repairedMeaningOk = isMeaningfulHtml(nav2.html);
+          const repairedAccepted = creativeEnabled ? repairedContractOk : (repairedMeaningOk && repairedContractOk);
+          if (repairedAccepted) {
             baseMeta.timings.totalMs = Date.now() - started;
             return buildResponse({
               html: nav2.html,
@@ -269,7 +292,7 @@ async function generatePipeline({ files }) {
         extractionMethod,
         finalizeApplied: true,
         repairAttempted,
-        whyFallback: "NO_SLIDES",
+        whyFallback: failedByContract ? "NO_SLIDES" : "LOW_MEANINGFULNESS",
         meta: baseMeta,
         sourceFiles,
         title: "Fallback Deck",

@@ -1,9 +1,24 @@
 "use strict";
 
 const path = require("path");
+const fs = require("fs");
 const dotenv = require("dotenv");
 
-dotenv.config({ path: path.join(process.cwd(), ".env") });
+function loadDotenv() {
+  const candidates = [
+    process.env.DOTENV_CONFIG_PATH,
+    path.join(process.cwd(), ".env"),
+    path.join(process.cwd(), "..", ".env"),
+  ].filter(Boolean);
+
+  for (const envPath of candidates) {
+    if (!fs.existsSync(envPath)) continue;
+    dotenv.config({ path: envPath });
+    if (process.env.GEMINI_API_KEY) break;
+  }
+}
+
+loadDotenv();
 
 function getEnv() {
   return {

@@ -1,10 +1,17 @@
 "use strict";
 
-function createHtmlPrompts({ combinedText, title }) {
+function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, styleMode, purposeMode }) {
+  const creativeHint = String(creativeMode) === "true";
+  const mode = String(styleMode || "creative").toLowerCase();
+  const extremeHint = mode === "extreme";
+  const purpose = String(purposeMode || "general").toLowerCase();
+  const tableHint = purpose === "table";
   const system = [
     "You are a presentation HTML generator.",
     "Return HTML only. No markdown.",
-    "Use house style: Next-gen executive + modern editorial hybrid.",
+    creativeHint
+      ? "Prioritize distinctive visual design with strong hierarchy, contrast, and intentional composition."
+      : "Use house style: Next-gen executive + modern editorial hybrid.",
     "Build a complete document with doctype/html/head/body.",
     "Include meta charset utf-8.",
     "Cover the major topics from the source without omissions.",
@@ -14,13 +21,26 @@ function createHtmlPrompts({ combinedText, title }) {
     "Ensure first slide is visible and navigation works.",
     "Include Prev/Next buttons and keyboard support.",
     "Include print CSS with page-break per slide.",
+    "Use <section class=\"slide\"> for each slide and keep at least 2 slides.",
+    "Use Tailwind CDN utility classes for styling.",
+    tableHint
+      ? "Purpose mode table: emphasize structured tabular presentation for key comparisons, metrics, and summaries."
+      : "",
+    extremeHint
+      ? "Extreme mode: push visual experimentation aggressively with bold layouts and unusual compositions while preserving readability."
+      : "",
+    creativeHint
+      ? "Allow creative layouts, expressive typography, and bold color direction while preserving readability."
+      : "Prefer conservative layout decisions optimized for reliability.",
   ].join(" ");
 
   const user = [
     `Title: ${title || "Auto-generated deck"}`,
+    `Purpose mode: ${purpose}`,
+    designPrompt ? `Design intent: ${designPrompt}` : "",
     "Source text:",
     combinedText,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   return { system, user };
 }

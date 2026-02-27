@@ -39,12 +39,35 @@
       .row { display: grid; gap: 8px; margin-bottom: 10px; }
       label { font-size: 13px; color: #1f3a31; font-weight: 600; }
       textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: inherit; min-height: 88px; resize: vertical; }
+      select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font: inherit; background: #fff; }
       .actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
       button, .btn { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; text-decoration: none; }
       .btn-primary { background: var(--brand); color: #fff; }
       .btn-primary:hover { background: var(--brand-strong); }
       .btn-secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
       .btn[disabled], button[disabled] { opacity: .55; cursor: not-allowed; }
+      .progress {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #b7d9ca;
+        background: #eefcf4;
+        color: #0e5a41;
+        border-radius: 999px;
+        padding: 6px 11px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .spinner {
+        width: 15px;
+        height: 15px;
+        border: 2px solid #c5e4d7;
+        border-top-color: #0d7a58;
+        border-radius: 999px;
+        animation: spin .9s linear infinite;
+      }
+      .hidden { display: none !important; }
       .chips { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
       .chip { border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; font-size: 12px; background: #f7fbf8; }
       .chip.warn { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
@@ -55,6 +78,7 @@
       .log ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
       .error { margin-top: 10px; color: var(--danger); font-size: 13px; white-space: pre-wrap; }
       iframe { width: 100%; min-height: 74vh; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+      @keyframes spin { to { transform: rotate(360deg); } }
       @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } iframe { min-height: 56vh; } }
     </style>
   </head>
@@ -72,12 +96,30 @@
             <input id="directFiles" type="file" multiple />
           </div>
           <div class="row">
-            <label for="directPrompt">디자인 방향 (선택)</label>
-            <textarea id="directPrompt" placeholder="예: 의료 IR 톤, 진한 초록 계열, 도표 중심"></textarea>
+            <label for="sourceText">텍스트 붙여넣기 (파일 없이 생성 가능)</label>
+            <textarea id="sourceText" placeholder="문서 내용을 그대로 붙여넣으세요. 파일 업로드 없이도 생성할 수 있습니다."></textarea>
+          </div>
+          <div class="row">
+            <label for="styleMode">스타일 모드</label>
+            <select id="styleMode">
+              <option value="creative" selected>Creative (기본)</option>
+              <option value="extreme">Extreme</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="purposeMode">목적 모드</label>
+            <select id="purposeMode">
+              <option value="general" selected>General</option>
+              <option value="table">Table</option>
+            </select>
           </div>
           <div class="actions">
             <button id="btnDirect" class="btn-primary" type="button">Direct 실행</button>
             <a id="downloadDeck" class="btn btn-secondary" href="#" download="layer3-deck.html">HTML 다운로드</a>
+          </div>
+          <div id="progress" class="progress hidden">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="progressText">Processing... (0s)</span>
           </div>
           <div class="chips" id="chips"></div>
           <div class="meta" id="meta"></div>
@@ -88,26 +130,52 @@
       </main>
     </div>
     <script>
-      const state = { blobUrl: "" };
+      const state = { blobUrl: "", progressTimer: null, startedAt: 0 };
       const els = {
         btnDirect: document.getElementById("btnDirect"),
         downloadDeck: document.getElementById("downloadDeck"),
         directFiles: document.getElementById("directFiles"),
-        directPrompt: document.getElementById("directPrompt"),
+        sourceText: document.getElementById("sourceText"),
+        styleMode: document.getElementById("styleMode"),
+        purposeMode: document.getElementById("purposeMode"),
         preview: document.getElementById("preview"),
         logs: document.getElementById("logs"),
         chips: document.getElementById("chips"),
         meta: document.getElementById("meta"),
         error: document.getElementById("error"),
+        progress: document.getElementById("progress"),
+        progressText: document.getElementById("progressText"),
         healthDot: document.getElementById("healthDot"),
         healthText: document.getElementById("healthText"),
       };
-      function log(msg) { const li = document.createElement("li"); li.textContent = msg; els.logs.appendChild(li); }
+      function nowLabel() {
+        const d = new Date();
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+      }
+      function log(msg) { const li = document.createElement("li"); li.textContent = `[${nowLabel()}] ${msg}`; els.logs.appendChild(li); }
       function resetOutput() { els.error.textContent = ""; els.chips.innerHTML = ""; els.meta.innerHTML = ""; }
       function setBusy(flag) { els.btnDirect.disabled = flag; }
+      function startProgress() {
+        state.startedAt = Date.now();
+        els.progress.classList.remove("hidden");
+        els.progressText.textContent = "Processing... (0s)";
+        if (state.progressTimer) clearInterval(state.progressTimer);
+        state.progressTimer = setInterval(() => {
+          const sec = Math.floor((Date.now() - state.startedAt) / 1000);
+          els.progressText.textContent = `Processing... (${sec}s)`;
+        }, 1000);
+      }
+      function stopProgress() {
+        if (state.progressTimer) {
+          clearInterval(state.progressTimer);
+          state.progressTimer = null;
+        }
+        els.progress.classList.add("hidden");
+      }
+      function elapsedMs() { return state.startedAt ? (Date.now() - state.startedAt) : 0; }
       function renderMeta(meta) {
         els.meta.innerHTML = "";
-        const keys = ["runId", "mode", "status", "slideCount", "timings.totalMs", "timings.generateMs", "whyFallback", "error"];
+        const keys = ["runId", "mode", "status", "styleMode", "purposeMode", "creativeMode", "slideCount", "timings.totalMs", "timings.generateMs", "timings.repairMs", "whyFallback", "error"];
         keys.forEach((k) => {
           const v = k.split(".").reduce((acc, x) => (acc && acc[x] !== undefined ? acc[x] : undefined), meta);
           const div = document.createElement("div");
@@ -135,12 +203,27 @@
       async function runDirect() {
         resetOutput(); els.logs.innerHTML = ""; log("Direct build started");
         const files = els.directFiles.files;
-        if (!files || files.length === 0) { els.error.textContent = "최소 1개 파일을 선택하세요."; return; }
+        const pastedText = (els.sourceText.value || "").trim();
+        if ((!files || files.length === 0) && !pastedText) {
+          els.error.textContent = "파일을 선택하거나 텍스트를 붙여넣으세요.";
+          return;
+        }
         setBusy(true);
+        startProgress();
         try {
           const form = new FormData();
           for (const f of files) form.append("documents", f);
-          if (els.directPrompt.value.trim()) form.append("designPrompt", els.directPrompt.value.trim());
+          if (pastedText) {
+            form.append(
+              "documents",
+              new Blob([pastedText], { type: "text/plain;charset=utf-8" }),
+              "pasted-input.txt"
+            );
+          }
+          form.append("styleMode", els.styleMode.value || "creative");
+          form.append("purposeMode", els.purposeMode.value || "general");
+          const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
+          log(`Uploading ${payloadCount} input(s)`);
           log("Calling /api/l3/build-direct");
           let res = await fetch("/api/l3/build-direct", { method: "POST", body: form });
           let json = await res.json().catch(() => ({}));
@@ -154,14 +237,33 @@
           const html = json.html || "";
           if (!html) throw new Error("응답에 html이 없습니다.");
           setPreviewHtml(html);
-          renderChips(["mode: direct", `files: ${files.length}`]);
+          renderChips([
+            "mode: direct",
+            `style: ${els.styleMode.value || "creative"}`,
+            `purpose: ${els.purposeMode.value || "general"}`,
+            `inputs: ${payloadCount}`,
+            pastedText ? "text: pasted" : "text: none"
+          ]);
           const variant = (json.htmlVariants && json.htmlVariants[0]) || {};
-          renderMeta({ runId: json.runId || variant.runId || null, mode: "direct", status: json.ok === false ? "FAILED" : "SUCCESS", slideCount: variant.meta && variant.meta.slideCount, timings: (variant.meta && variant.meta.timings) || {}, whyFallback: variant.whyFallback || null, error: null });
+          renderMeta({
+            runId: json.runId || variant.runId || null,
+            mode: "direct",
+            status: (variant.meta && variant.meta.status) || json.status || "SUCCESS",
+            styleMode: (variant.meta && variant.meta.styleMode) || json.styleMode || (els.styleMode.value || "creative"),
+            purposeMode: (variant.meta && variant.meta.purposeMode) || json.purposeMode || (els.purposeMode.value || "general"),
+            creativeMode: (variant.meta && variant.meta.creativeMode) || json.creativeMode || false,
+            slideCount: variant.meta && variant.meta.slideCount,
+            timings: (variant.meta && variant.meta.timings) || {},
+            whyFallback: variant.whyFallback || json.whyFallback || null,
+            error: null
+          });
+          log(`API response received in ${Math.floor(elapsedMs() / 1000)}s`);
           log("Direct build completed");
         } catch (e) {
           els.error.textContent = e.message;
           log(`Direct build failed: ${e.message}`);
         } finally { setBusy(false); }
+        stopProgress();
       }
       els.btnDirect.addEventListener("click", runDirect);
       checkHealth(); setInterval(checkHealth, 4000);
