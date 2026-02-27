@@ -37,44 +37,47 @@
 ## 2) 상세 구현 계획 (Task Breakdown)
 
 ## Phase 0. 기준선 고정
-- [ ] P0-1. 환경변수 계약 문서화 (`launcher/.env.example`, 각 layer `.env.example`)
-- [ ] P0-2. 포트/경로 SSOT 고정 (`5170~5173`, `ARTIFACTS_ROOT`)
-- [ ] P0-3. 런처-레이어 API 매핑표 확정 (`/api/run/*` 프록시 타깃)
-- [ ] P0-4. 레이어별 spawn 커맨드 맵 고정 문서화 (명시적 매핑)
-  - [ ] L1: `npm.cmd run dev` (또는 확정값)
-  - [ ] L2: `npm.cmd start` (고정)
-  - [ ] L3: `npm.cmd run dev` (또는 확정값)
-- [ ] P0-5. Health/Restart 상수 고정 (`30000`, `N=3`, `X=10s`, `5회/5분`, `500ms`)
-- [ ] P0-6. L3 초기 생성 방식 고정 (L2 `v0.1.0-stable.1`에서 one-time COPY)
-- [ ] P0-7. 복제 이후 독립성 규칙 문서화 (공유 금지 목록 명시)
-  - [ ] 금지: workspace/shared module/git submodule/runtime dependency
-  - [ ] 금지: L2↔L3 import/require, 공용 scripts/packages
+- [x] P0-1. 환경변수 계약 문서화 (`docs/PHASE0_BASELINE.md`)
+- [x] P0-2. 포트/경로 SSOT 고정 (`5170~5173`, `ARTIFACTS_ROOT`)
+- [x] P0-3. 런처-레이어 API 매핑표 확정 (`/api/run/*` 프록시 타깃)
+- [x] P0-4. 레이어별 spawn 커맨드 맵 고정 문서화 (명시적 매핑)
+  - [x] L1: `npm.cmd start`
+  - [x] L2: `npm.cmd start` (고정)
+  - [x] L3: `npm.cmd start`
+- [x] P0-5. Health/Restart 상수 고정 (`30000`, `N=3`, `X=10s`, `5회/5분`, `500ms`)
+- [x] P0-6. L3 초기 생성 방식 고정 (L2 `v0.1.0-stable.1`에서 one-time COPY)
+- [x] P0-7. 복제 이후 독립성 규칙 문서화 (공유 금지 목록 명시)
+  - [x] 금지: workspace/shared module/git submodule/runtime dependency
+  - [x] 금지: L2↔L3 import/require, 공용 scripts/packages
 
 완료기준
-- [ ] 모든 팀원이 동일한 env 키/포트/엔드포인트로 실행 가능
-- [ ] L3 베이스라인 출처(태그/복제시점)가 문서에 추적 가능
+- [x] 모든 팀원이 동일한 env 키/포트/엔드포인트로 실행 가능
+- [x] L3 베이스라인 출처(태그/복제시점)가 문서에 추적 가능
 
 ## Phase 1. Launcher 프로세스 관리 뼈대
-- [ ] P1-1. `processManager` 서비스 레지스트리 정의 (L1/L2/L3)
-- [ ] P1-2. Boot-time 병렬 spawn 구현 (`cwd`, `env override`)
-- [ ] P1-2a. per-layer command map 적용 (전역 dev/prod 추론 제거)
-- [ ] P1-2b. L2는 항상 `npm.cmd start` 사용 강제
-- [ ] P1-3. 상태 저장소 구현 (`starting/healthy/unhealthy/crashed/failed`)
-- [ ] P1-4. graceful shutdown 구현 (`SIGTERM`→5s→`SIGKILL`)
-- [ ] P1-5. stdout/stderr 수집 + `[L1|L2|L3]` prefix 로그 버퍼(최근 200줄)
+- [x] P1-1. `processManager` 서비스 레지스트리 정의 (L1/L2/L3)
+- [x] P1-2. Boot-time 병렬 spawn 구현 (`cwd`, `env override`)
+- [x] P1-2a. per-layer command map 적용 (전역 dev/prod 추론 제거)
+- [x] P1-2b. L2는 항상 `npm.cmd start` 사용 강제
+- [x] P1-3. 상태 저장소 구현 (`starting/healthy/unhealthy/crashed/failed`)
+- [x] P1-4. graceful shutdown 구현 (`SIGTERM`→5s→`SIGKILL`)
+- [x] P1-5. stdout/stderr 수집 + `[L1|L2|L3]` prefix 로그 버퍼(최근 200줄)
 
 완료기준
-- [ ] Launcher 1회 실행으로 L1/L2/L3 프로세스가 모두 기동
-- [ ] Ctrl+C 시 자식 프로세스가 종료됨
-- [ ] 실행/의존성 관점에서 L2-L3 결합점이 없음(독립 실행 확인)
+- [x] Launcher 1회 실행으로 L1/L2/L3 프로세스가 모두 기동
+- [x] Ctrl+C 시 자식 프로세스가 종료됨
+- [x] 실행/의존성 관점에서 L2-L3 결합점이 없음(독립 실행 확인)
 
 ## Phase 1.5. L3 Fork Baseline 검증
-- [ ] P1.5-1. Layer3가 Layer2 `v0.1.0-stable.1` 기반 one-time copy인지 증적화
-- [ ] P1.5-2. Layer2/L3 간 상호 import 경로 스캔(금지 규칙 위반 탐지)
-- [ ] P1.5-3. package/script 공유 여부 점검 (락파일/스크립트 독립성 확인)
+- [x] P1.5-1. Layer3가 Layer2 `v0.1.0-stable.1` 기반 one-time copy인지 증적화
+- [x] P1.5-2. Layer2/L3 간 상호 import 경로 스캔(금지 규칙 위반 탐지)
+- [x] P1.5-3. package/script 공유 여부 점검 (락파일/스크립트 독립성 확인)
+- 실행 도구: `npm.cmd run verify:fork-baseline`
+- 증적 파일: `docs/L3_FORK_BASELINE_EVIDENCE.json`
+- 검증 리포트: `docs/PHASE1_5_REPORT.md`
 
 완료기준
-- [ ] Layer3는 복제 후 독립 코드베이스로 운영됨
+- [x] Layer3는 복제 후 독립 코드베이스로 운영됨
 
 ## Phase 2. Health polling + auto-restart
 - [ ] P2-1. 주기적 health check 구현 (`interval/timeout/startup grace`)

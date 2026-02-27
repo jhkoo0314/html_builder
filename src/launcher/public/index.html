@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Launcher Status</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 24px;
+        background: #f5f7fb;
+        color: #18202a;
+      }
+      h1 {
+        margin: 0 0 16px 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d9e0ea;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .status {
+        font-weight: 700;
+      }
+      .healthy { color: #176a2e; }
+      .starting, .stopping { color: #996100; }
+      .failed, .crashed { color: #b42318; }
+      .meta {
+        font-size: 12px;
+        color: #465467;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Launcher Process Status</h1>
+    <div id="root" class="grid"></div>
+    <script>
+      const root = document.getElementById("root");
+
+      function render(services) {
+        root.innerHTML = "";
+        Object.entries(services).forEach(([key, s]) => {
+          const el = document.createElement("section");
+          el.className = "card";
+          const statusClass = (s.status || "").toLowerCase();
+          el.innerHTML = `
+            <div><strong>${key}</strong></div>
+            <div class="status ${statusClass}">${s.status || "unknown"}</div>
+            <div class="meta">port: ${s.port ?? "-"}</div>
+            <div class="meta">pid: ${s.pid ?? "-"}</div>
+            <div class="meta">restartCount: ${s.restartCount ?? 0}</div>
+            <div class="meta">updatedAt: ${s.updatedAt || "-"}</div>
+          `;
+          root.appendChild(el);
+        });
+      }
+
+      async function poll() {
+        try {
+          const res = await fetch("/api/status");
+          const json = await res.json();
+          render(json.services || {});
+        } catch (_) {
+          root.innerHTML = "<div class='card'>status fetch failed</div>";
+        }
+      }
+
+      poll();
+      setInterval(poll, 2000);
+    </script>
+  </body>
+</html>
+
