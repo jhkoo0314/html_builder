@@ -1,5 +1,5 @@
-<!doctype html>
-<html lang="ko">
+﻿<!doctype html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -20,7 +20,7 @@
       body {
         margin: 0;
         color: var(--ink);
-        font-family: "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+        font-family: "Segoe UI", sans-serif;
         background:
           radial-gradient(1200px 420px at 8% -10%, #f8fff9 0%, transparent 62%),
           radial-gradient(1000px 400px at 100% 0%, #ebf8f0 0%, transparent 60%),
@@ -86,30 +86,35 @@
     <div class="wrap">
       <header class="hero">
         <h1 class="title">Layer3 Advanced Studio</h1>
-        <p class="sub">Direct 생성 경로를 테스트하고 결과를 즉시 확인합니다.</p>
+        <p class="sub">Direct mode takes your source files and generates a presentation HTML deck with preview and download in one flow.</p>
         <div class="health"><span id="healthDot" class="dot"></span><span id="healthText">health: checking...</span></div>
       </header>
       <main class="grid">
         <section class="panel">
           <div class="row">
-            <label for="directFiles">문서 파일 (다중 선택)</label>
+            <label for="directFiles">Source files (optional, multiple)</label>
             <input id="directFiles" type="file" multiple />
           </div>
           <div class="row">
-            <label for="sourceText">텍스트 붙여넣기 (파일 없이 생성 가능)</label>
-            <textarea id="sourceText" placeholder="문서 내용을 그대로 붙여넣으세요. 파일 업로드 없이도 생성할 수 있습니다."></textarea>
+            <label for="sourceText">Pasted source text (optional, used as an extra input)</label>
+            <textarea id="sourceText" placeholder="Paste source content here. You can use files, text, or both."></textarea>
           </div>
           <div class="row">
-            <label for="styleMode">스타일 모드</label>
+            <label for="step2HtmlFile">Step2 HTML upload (open directly in editor)</label>
+            <input id="step2HtmlFile" type="file" accept=".html,text/html" />
+          </div>
+          <div class="row">
+            <label for="styleMode">Style mode</label>
             <select id="styleMode">
-              <option value="normal" selected>Normal (기본)</option>
+              <option value="normal" selected>Normal (stable)</option>
               <option value="creative">Creative</option>
               <option value="extreme">Extreme</option>
             </select>
           </div>
           <div class="actions">
-            <button id="btnDirect" class="btn-primary" type="button">Direct 실행</button>
-            <a id="downloadDeck" class="btn btn-secondary" href="#" download="layer3-deck.html">HTML 다운로드</a>
+            <button id="btnDirect" class="btn-primary" type="button">Run Direct Build</button>
+            <a id="downloadDeck" class="btn btn-secondary" href="#" download="layer3-deck.html">Download HTML</a>
+            <button id="editStep2" class="btn btn-secondary" type="button" disabled>Open Step2-A Editor</button>
           </div>
           <div id="progress" class="progress hidden">
             <span class="spinner" aria-hidden="true"></span>
@@ -128,8 +133,10 @@
       const els = {
         btnDirect: document.getElementById("btnDirect"),
         downloadDeck: document.getElementById("downloadDeck"),
+        editStep2: document.getElementById("editStep2"),
         directFiles: document.getElementById("directFiles"),
         sourceText: document.getElementById("sourceText"),
+        step2HtmlFile: document.getElementById("step2HtmlFile"),
         styleMode: document.getElementById("styleMode"),
         preview: document.getElementById("preview"),
         logs: document.getElementById("logs"),
@@ -141,13 +148,28 @@
         healthDot: document.getElementById("healthDot"),
         healthText: document.getElementById("healthText"),
       };
+
       function nowLabel() {
         const d = new Date();
         return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
       }
-      function log(msg) { const li = document.createElement("li"); li.textContent = `[${nowLabel()}] ${msg}`; els.logs.appendChild(li); }
-      function resetOutput() { els.error.textContent = ""; els.chips.innerHTML = ""; els.meta.innerHTML = ""; }
-      function setBusy(flag) { els.btnDirect.disabled = flag; }
+
+      function log(msg) {
+        const li = document.createElement("li");
+        li.textContent = `[${nowLabel()}] ${msg}`;
+        els.logs.appendChild(li);
+      }
+
+      function resetOutput() {
+        els.error.textContent = "";
+        els.chips.innerHTML = "";
+        els.meta.innerHTML = "";
+      }
+
+      function setBusy(flag) {
+        els.btnDirect.disabled = flag;
+      }
+
       function startProgress() {
         state.startedAt = Date.now();
         els.progress.classList.remove("hidden");
@@ -158,6 +180,7 @@
           els.progressText.textContent = `Processing... (${sec}s)`;
         }, 1000);
       }
+
       function stopProgress() {
         if (state.progressTimer) {
           clearInterval(state.progressTimer);
@@ -165,10 +188,26 @@
         }
         els.progress.classList.add("hidden");
       }
-      function elapsedMs() { return state.startedAt ? (Date.now() - state.startedAt) : 0; }
+
+      function elapsedMs() {
+        return state.startedAt ? (Date.now() - state.startedAt) : 0;
+      }
+
       function renderMeta(meta) {
         els.meta.innerHTML = "";
-        const keys = ["runId", "mode", "status", "styleMode", "creativeMode", "slideCount", "timings.totalMs", "timings.generateMs", "timings.repairMs", "whyFallback", "error"];
+        const keys = [
+          "runId",
+          "mode",
+          "status",
+          "styleMode",
+          "creativeMode",
+          "slideCount",
+          "timings.totalMs",
+          "timings.generateMs",
+          "timings.repairMs",
+          "whyFallback",
+          "error",
+        ];
         keys.forEach((k) => {
           const v = k.split(".").reduce((acc, x) => (acc && acc[x] !== undefined ? acc[x] : undefined), meta);
           const div = document.createElement("div");
@@ -176,33 +215,101 @@
           els.meta.appendChild(div);
         });
       }
-      function renderChips(chips) { els.chips.innerHTML = ""; chips.forEach((text) => { const span = document.createElement("span"); span.className = "chip"; span.textContent = text; els.chips.appendChild(span); }); }
-      function showWarningChip(text) { const span = document.createElement("span"); span.className = "chip warn"; span.textContent = text; els.chips.appendChild(span); }
+
+      function renderChips(chips) {
+        els.chips.innerHTML = "";
+        chips.forEach((text) => {
+          const span = document.createElement("span");
+          span.className = "chip";
+          span.textContent = text;
+          els.chips.appendChild(span);
+        });
+      }
+
+      function showWarningChip(text) {
+        const span = document.createElement("span");
+        span.className = "chip warn";
+        span.textContent = text;
+        els.chips.appendChild(span);
+      }
+
+      function updateStep2ButtonState() {
+        const hasPreview = Boolean((els.preview.srcdoc || "").trim());
+        const hasUpload = Boolean(els.step2HtmlFile.files && els.step2HtmlFile.files[0]);
+        els.editStep2.disabled = !(hasPreview || hasUpload);
+      }
+
       async function checkHealth() {
         try {
           const res = await fetch("/healthz");
           const json = await res.json();
-          if (res.ok && json && json.ok) { els.healthDot.className = "dot ok"; els.healthText.textContent = `health: healthy (${json.service})`; }
-          else { els.healthDot.className = "dot bad"; els.healthText.textContent = `health: not ready (${json && json.details ? json.details.reason : "unknown"})`; }
-        } catch (e) { els.healthDot.className = "dot bad"; els.healthText.textContent = `health: unreachable (${e.message})`; }
+          if (res.ok && json && json.ok) {
+            els.healthDot.className = "dot ok";
+            els.healthText.textContent = `health: healthy (${json.service})`;
+          } else {
+            els.healthDot.className = "dot bad";
+            els.healthText.textContent = `health: not ready (${json && json.details ? json.details.reason : "unknown"})`;
+          }
+        } catch (e) {
+          els.healthDot.className = "dot bad";
+          els.healthText.textContent = `health: unreachable (${e.message})`;
+        }
       }
+
       function setPreviewHtml(html) {
         els.preview.srcdoc = html || "";
         const blob = new Blob([html || ""], { type: "text/html;charset=utf-8" });
         if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
         state.blobUrl = URL.createObjectURL(blob);
         els.downloadDeck.href = state.blobUrl;
+        try {
+          localStorage.setItem("STEP2A_HTML", html || "");
+        } catch (_) {
+          // no-op
+        }
+        updateStep2ButtonState();
       }
+
+      async function openStep2Editor() {
+        try {
+          const current = (els.preview.srcdoc || "").trim();
+          if (current) {
+            localStorage.setItem("STEP2A_HTML", current);
+          } else {
+            const uploaded = els.step2HtmlFile.files && els.step2HtmlFile.files[0];
+            if (!uploaded) {
+              els.error.textContent = "Generate a deck or upload an HTML file for Step2 first.";
+              return;
+            }
+            const uploadedHtml = await uploaded.text();
+            if (!uploadedHtml.trim()) {
+              els.error.textContent = "Uploaded HTML file is empty.";
+              return;
+            }
+            localStorage.setItem("STEP2A_HTML", uploadedHtml);
+          }
+        } catch (_) {
+          els.error.textContent = "Failed to read Step2 input HTML.";
+          return;
+        }
+        window.open("/editor.html", "_blank");
+      }
+
       async function runDirect() {
-        resetOutput(); els.logs.innerHTML = ""; log("Direct build started");
+        resetOutput();
+        els.logs.innerHTML = "";
+        log("Direct build started");
+
         const files = els.directFiles.files;
         const pastedText = (els.sourceText.value || "").trim();
         if ((!files || files.length === 0) && !pastedText) {
-          els.error.textContent = "파일을 선택하거나 텍스트를 붙여넣으세요.";
+          els.error.textContent = "Select files or paste text first.";
           return;
         }
+
         setBusy(true);
         startProgress();
+
         try {
           const form = new FormData();
           for (const f of files) form.append("documents", f);
@@ -214,27 +321,34 @@
             );
           }
           form.append("styleMode", els.styleMode.value || "normal");
+
           const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
           log(`Uploading ${payloadCount} input(s)`);
           log("Calling /api/l3/build-direct");
+
           let res = await fetch("/api/l3/build-direct", { method: "POST", body: form });
           let json = await res.json().catch(() => ({}));
+
           if (res.status === 501) {
             log("build-direct not implemented, fallback to /api/generate-llm");
-            showWarningChip("build-direct 미구현: generate-llm 폴백 사용");
+            showWarningChip("build-direct not implemented: fallback to generate-llm");
             res = await fetch("/api/generate-llm", { method: "POST", body: form });
             json = await res.json().catch(() => ({}));
           }
+
           if (!res.ok) throw new Error(json.message || json.error || "Direct build failed");
+
           const html = json.html || "";
-          if (!html) throw new Error("응답에 html이 없습니다.");
+          if (!html) throw new Error("No html in response.");
+
           setPreviewHtml(html);
           renderChips([
             "mode: direct",
             `style: ${els.styleMode.value || "normal"}`,
             `inputs: ${payloadCount}`,
-            pastedText ? "text: pasted" : "text: none"
+            pastedText ? "text: pasted" : "text: none",
           ]);
+
           const variant = (json.htmlVariants && json.htmlVariants[0]) || {};
           renderMeta({
             runId: json.runId || variant.runId || null,
@@ -245,19 +359,29 @@
             slideCount: variant.meta && variant.meta.slideCount,
             timings: (variant.meta && variant.meta.timings) || {},
             whyFallback: variant.whyFallback || json.whyFallback || null,
-            error: null
+            error: null,
           });
+
           log(`API response received in ${Math.floor(elapsedMs() / 1000)}s`);
           log("Direct build completed");
         } catch (e) {
           els.error.textContent = e.message;
           log(`Direct build failed: ${e.message}`);
-        } finally { setBusy(false); }
-        stopProgress();
+        } finally {
+          setBusy(false);
+          stopProgress();
+        }
       }
+
       els.btnDirect.addEventListener("click", runDirect);
-      checkHealth(); setInterval(checkHealth, 4000);
-      window.addEventListener("beforeunload", () => { if (state.blobUrl) URL.revokeObjectURL(state.blobUrl); });
+      els.editStep2.addEventListener("click", openStep2Editor);
+      els.step2HtmlFile.addEventListener("change", updateStep2ButtonState);
+      updateStep2ButtonState();
+      checkHealth();
+      setInterval(checkHealth, 4000);
+      window.addEventListener("beforeunload", () => {
+        if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
+      });
     </script>
   </body>
 </html>

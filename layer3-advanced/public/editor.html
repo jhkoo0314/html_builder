@@ -1,0 +1,667 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Step2-A Editor</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --panel: #ffffff;
+        --line: #d8e1ef;
+        --ink: #17212e;
+        --muted: #5f6e82;
+        --brand: #0f766e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(900px 360px at 0% -10%, #edf7ff 0%, transparent 65%), var(--bg);
+      }
+      .topbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .topbar .left, .topbar .right { display: flex; gap: 8px; align-items: center; }
+      button, .btn {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--ink);
+      }
+      .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+      button:disabled { opacity: .55; cursor: not-allowed; }
+      .layout {
+        display: grid;
+        grid-template-columns: 260px 1fr 340px;
+        gap: 10px;
+        padding: 10px;
+        min-height: calc(100vh - 58px);
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .panel h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .slides {
+        display: grid;
+        gap: 6px;
+        max-height: calc(100vh - 180px);
+        overflow: auto;
+      }
+      .slide-item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+        cursor: pointer;
+      }
+      .slide-item.active {
+        border-color: #60a5fa;
+        background: #eff6ff;
+      }
+      .slide-item .title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .slide-item .meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .preview-wrap { height: calc(100vh - 120px); }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+      .form-row { display: grid; gap: 6px; margin-bottom: 10px; }
+      .form-row label { font-size: 12px; color: var(--muted); }
+      input[type="text"], textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        font: inherit;
+      }
+      textarea { min-height: 100px; resize: vertical; }
+      .stack { display: flex; gap: 6px; flex-wrap: wrap; }
+      .hint { font-size: 12px; color: var(--muted); }
+      .log {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fbff;
+        padding: 8px;
+      }
+      .log h4 {
+        margin: 0 0 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .log ul {
+        margin: 0;
+        padding-left: 18px;
+        max-height: 180px;
+        overflow: auto;
+        font-size: 12px;
+      }
+      @media (max-width: 1100px) {
+        .layout { grid-template-columns: 1fr; }
+        .preview-wrap { height: 56vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="left">
+        <strong>Step2-A Editor</strong>
+        <span class="hint" id="statusText">No document loaded</span>
+      </div>
+      <div class="right">
+        <input id="fileInput" type="file" accept=".html,text/html" />
+        <button id="btnLoadStorage">Load Step1</button>
+        <button id="btnUndo" disabled>Undo</button>
+        <button id="btnRedo" disabled>Redo</button>
+        <button id="btnDownload" class="btn-primary" disabled>Download Edited HTML</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h3>Slides</h3>
+        <div class="stack" style="margin-bottom:8px;">
+          <button id="btnMoveUp" disabled>Up</button>
+          <button id="btnMoveDown" disabled>Down</button>
+          <button id="btnDuplicate" disabled>Duplicate</button>
+          <button id="btnDelete" disabled>Delete</button>
+          <button id="btnToggleHide" disabled>Hide/Show</button>
+        </div>
+        <div id="slideList" class="slides"></div>
+      </section>
+
+      <section class="panel preview-wrap">
+        <iframe id="preview" title="Step2-A preview"></iframe>
+      </section>
+
+      <section class="panel">
+        <h3>Selected Slide</h3>
+        <div class="form-row">
+          <label for="titleInput">Title</label>
+          <input id="titleInput" type="text" />
+        </div>
+        <div class="form-row">
+          <label for="bodyInput">Body (first paragraph)</label>
+          <textarea id="bodyInput"></textarea>
+        </div>
+        <div class="stack">
+          <button id="btnApplyText" class="btn-primary" disabled>Apply Text</button>
+          <button id="btnSyncFromFrame" disabled>Sync From Preview</button>
+        </div>
+        <p class="hint" style="margin-top:10px;">
+          You can edit directly in preview and sync it here. Keyboard shortcuts: Ctrl+Z / Ctrl+Y.
+        </p>
+        <div class="log">
+          <h4>Change Log</h4>
+          <ul id="changeLog"></ul>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const STORAGE_KEY = "STEP2A_HTML";
+      const MAX_HISTORY = 80;
+      const MAX_LOG = 120;
+
+      const state = {
+        doc: null,
+        selected: 0,
+        blobUrl: "",
+        history: [],
+        future: [],
+        changeLog: [],
+      };
+
+      const els = {
+        fileInput: document.getElementById("fileInput"),
+        btnLoadStorage: document.getElementById("btnLoadStorage"),
+        btnDownload: document.getElementById("btnDownload"),
+        btnUndo: document.getElementById("btnUndo"),
+        btnRedo: document.getElementById("btnRedo"),
+        btnMoveUp: document.getElementById("btnMoveUp"),
+        btnMoveDown: document.getElementById("btnMoveDown"),
+        btnDuplicate: document.getElementById("btnDuplicate"),
+        btnDelete: document.getElementById("btnDelete"),
+        btnToggleHide: document.getElementById("btnToggleHide"),
+        btnApplyText: document.getElementById("btnApplyText"),
+        btnSyncFromFrame: document.getElementById("btnSyncFromFrame"),
+        slideList: document.getElementById("slideList"),
+        preview: document.getElementById("preview"),
+        statusText: document.getElementById("statusText"),
+        titleInput: document.getElementById("titleInput"),
+        bodyInput: document.getElementById("bodyInput"),
+        changeLog: document.getElementById("changeLog"),
+      };
+
+      function parseHtml(html) {
+        return new DOMParser().parseFromString(html, "text/html");
+      }
+
+      function getSlides(doc) {
+        const primary = Array.from(doc.querySelectorAll("section.slide, .slide, [data-slide]"));
+        if (primary.length) {
+          return primary.filter((node) => !primary.some((other) => other !== node && other.contains(node)));
+        }
+
+        const sections = Array.from(doc.querySelectorAll("body > section, main > section, .slides > section"));
+        if (sections.length) return sections;
+
+        if (doc.body) {
+          const bodyChildren = Array.from(doc.body.children).filter((el) => {
+            const tag = el.tagName.toLowerCase();
+            return tag !== "script" && tag !== "style";
+          });
+          if (bodyChildren.length) return bodyChildren;
+        }
+
+        return [];
+      }
+
+      function selectedSlide() {
+        const slides = getSlides(state.doc);
+        if (!slides.length) return null;
+        state.selected = Math.max(0, Math.min(state.selected, slides.length - 1));
+        return slides[state.selected] || null;
+      }
+
+      function textOf(el) {
+        return (el ? el.textContent : "").replace(/\s+/g, " ").trim();
+      }
+
+      function slideTitle(slide, idx) {
+        const heading = slide.querySelector("h1,h2,h3,h4");
+        const t = textOf(heading) || textOf(slide).slice(0, 48) || `Slide ${idx + 1}`;
+        return t.slice(0, 64);
+      }
+
+      function docToHtml(doc) {
+        return "<!doctype html>\n" + doc.documentElement.outerHTML;
+      }
+
+      function cleanBeforeExport(doc) {
+        const clone = doc.cloneNode(true);
+        clone.querySelectorAll("[data-step2-index]").forEach((el) => {
+          el.removeAttribute("data-step2-index");
+          el.removeAttribute("contenteditable");
+          el.style.outline = "";
+          el.style.outlineOffset = "";
+        });
+        return docToHtml(clone);
+      }
+
+      function snapshot() {
+        if (!state.doc) return null;
+        return {
+          html: docToHtml(state.doc),
+          selected: state.selected,
+        };
+      }
+
+      function restoreSnapshot(s) {
+        if (!s || !s.html) return;
+        state.doc = parseHtml(s.html);
+        state.selected = Number.isFinite(Number(s.selected)) ? Number(s.selected) : 0;
+        render();
+      }
+
+      function pushChange(action) {
+        const ts = new Date();
+        const stamp = `${String(ts.getHours()).padStart(2, "0")}:${String(ts.getMinutes()).padStart(2, "0")}:${String(ts.getSeconds()).padStart(2, "0")}`;
+        state.changeLog.unshift({ stamp, action });
+        if (state.changeLog.length > MAX_LOG) state.changeLog.pop();
+      }
+
+      function commit(action) {
+        const s = snapshot();
+        if (!s) return;
+        state.history.push(s);
+        if (state.history.length > MAX_HISTORY) state.history.shift();
+        state.future = [];
+        pushChange(action);
+        renderChangeLog();
+        refreshToolbar();
+      }
+
+      function renderChangeLog() {
+        els.changeLog.innerHTML = "";
+        state.changeLog.forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = `[${item.stamp}] ${item.action}`;
+          els.changeLog.appendChild(li);
+        });
+      }
+
+      function annotateSlides() {
+        const slides = getSlides(state.doc);
+        slides.forEach((slide, idx) => {
+          slide.setAttribute("data-step2-index", String(idx));
+          slide.removeAttribute("contenteditable");
+          if (idx === state.selected) {
+            slide.style.outline = "3px solid #60a5fa";
+            slide.style.outlineOffset = "-3px";
+          } else {
+            slide.style.outline = "";
+            slide.style.outlineOffset = "";
+          }
+        });
+      }
+
+      function syncInputs() {
+        const slide = selectedSlide();
+        if (!slide) {
+          els.titleInput.value = "";
+          els.bodyInput.value = "";
+          return;
+        }
+        const heading = slide.querySelector("h1,h2,h3,h4");
+        const paragraph = slide.querySelector("p,li,figcaption,blockquote");
+        els.titleInput.value = textOf(heading);
+        els.bodyInput.value = textOf(paragraph);
+      }
+
+      function refreshToolbar() {
+        const hasDoc = Boolean(state.doc);
+        const slides = hasDoc ? getSlides(state.doc) : [];
+        const hasSlides = slides.length > 0;
+
+        els.btnDownload.disabled = !hasDoc;
+        els.btnUndo.disabled = state.history.length === 0;
+        els.btnRedo.disabled = state.future.length === 0;
+
+        els.btnMoveUp.disabled = !hasSlides || state.selected <= 0;
+        els.btnMoveDown.disabled = !hasSlides || state.selected >= slides.length - 1;
+        els.btnDuplicate.disabled = !hasSlides;
+        els.btnDelete.disabled = !hasSlides || slides.length <= 1;
+        els.btnToggleHide.disabled = !hasSlides;
+        els.btnApplyText.disabled = !hasSlides;
+        els.btnSyncFromFrame.disabled = !hasSlides;
+      }
+
+      function render() {
+        if (!state.doc) {
+          els.preview.srcdoc = "";
+          els.slideList.innerHTML = "";
+          els.statusText.textContent = "No document loaded";
+          refreshToolbar();
+          return;
+        }
+
+        annotateSlides();
+        const html = buildEditorPreviewHtml();
+        els.preview.srcdoc = html;
+        renderSlideList();
+        syncInputs();
+        const slides = getSlides(state.doc);
+        els.statusText.textContent = `Loaded - ${slides.length} slides`;
+        refreshToolbar();
+      }
+
+      function buildEditorPreviewHtml() {
+        const clone = state.doc.cloneNode(true);
+        const slides = getSlides(clone);
+        if (!slides.length) return docToHtml(clone);
+
+        const selected = Math.max(0, Math.min(state.selected, slides.length - 1));
+        const selectedSlide = slides[selected].cloneNode(true);
+
+        const previewDoc = document.implementation.createHTMLDocument("Step2 Preview");
+        previewDoc.documentElement.lang = "en";
+
+        clone.querySelectorAll("head style, head link[rel='stylesheet']").forEach((node) => {
+          previewDoc.head.appendChild(node.cloneNode(true));
+        });
+
+        const style = previewDoc.createElement("style");
+        style.textContent = `
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            overflow: auto !important;
+          }
+          body::before, body::after { display: none !important; content: none !important; }
+          .step2-preview-root, .step2-preview-root * {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            pointer-events: auto !important;
+            caret-color: auto !important;
+          }
+          .step2-preview-root { cursor: text !important; }
+          .step2-preview-root {
+            min-height: 100vh;
+            padding: 12px;
+          }
+          .step2-preview-root section.slide,
+          .step2-preview-root .slide {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: none !important;
+            position: relative !important;
+            inset: auto !important;
+            filter: none !important;
+          }
+          .step2-preview-root * {
+            animation: none !important;
+            transition: none !important;
+          }
+          .step2-preview-root [style*="position: fixed"] {
+            position: absolute !important;
+          }
+        `;
+        previewDoc.head.appendChild(style);
+
+        const srcBody = clone.body;
+        if (srcBody) {
+          previewDoc.body.className = srcBody.className || "";
+          if (srcBody.id) previewDoc.body.id = srcBody.id;
+        }
+
+        const root = previewDoc.createElement("div");
+        root.className = "step2-preview-root";
+        root.setAttribute("contenteditable", "true");
+        root.setAttribute("spellcheck", "false");
+        root.setAttribute("tabindex", "0");
+        root.appendChild(selectedSlide);
+        previewDoc.body.innerHTML = "";
+        previewDoc.body.appendChild(root);
+
+        return docToHtml(previewDoc);
+      }
+
+      function renderSlideList() {
+        els.slideList.innerHTML = "";
+        const slides = getSlides(state.doc);
+        slides.forEach((slide, idx) => {
+          const item = document.createElement("div");
+          item.className = "slide-item" + (idx === state.selected ? " active" : "");
+          const hidden = slide.getAttribute("data-step2-hidden") === "1";
+          item.innerHTML = `<div class="title">${idx + 1}. ${slideTitle(slide, idx)}</div><div class="meta">${hidden ? "Hidden" : "Visible"}</div>`;
+          item.addEventListener("click", () => {
+            state.selected = idx;
+            render();
+          });
+          els.slideList.appendChild(item);
+        });
+      }
+
+      function loadHtml(html) {
+        state.doc = parseHtml(html);
+        state.selected = 0;
+        state.history = [];
+        state.future = [];
+        state.changeLog = [];
+        pushChange("Loaded document");
+        renderChangeLog();
+        render();
+      }
+
+      function moveSelected(offset) {
+        const slides = getSlides(state.doc);
+        const from = state.selected;
+        const to = from + offset;
+        if (to < 0 || to >= slides.length) return;
+        commit(offset > 0 ? "Move slide down" : "Move slide up");
+        const parent = slides[from].parentNode;
+        const node = slides[from];
+        if (offset > 0) parent.insertBefore(node, slides[to].nextSibling);
+        else parent.insertBefore(node, slides[to]);
+        state.selected = to;
+        render();
+      }
+
+      function duplicateSelected() {
+        const slide = selectedSlide();
+        if (!slide) return;
+        commit("Duplicate slide");
+        const clone = slide.cloneNode(true);
+        slide.parentNode.insertBefore(clone, slide.nextSibling);
+        state.selected += 1;
+        render();
+      }
+
+      function deleteSelected() {
+        const slides = getSlides(state.doc);
+        if (slides.length <= 1) return;
+        const slide = selectedSlide();
+        if (!slide) return;
+        commit("Delete slide");
+        slide.remove();
+        state.selected = Math.max(0, state.selected - 1);
+        render();
+      }
+
+      function toggleHideSelected() {
+        const slide = selectedSlide();
+        if (!slide) return;
+        const hidden = slide.getAttribute("data-step2-hidden") === "1";
+        commit(hidden ? "Show slide" : "Hide slide");
+        if (hidden) {
+          slide.setAttribute("data-step2-hidden", "0");
+          slide.style.display = "";
+        } else {
+          slide.setAttribute("data-step2-hidden", "1");
+          slide.style.display = "none";
+        }
+        render();
+      }
+
+      function applyText() {
+        const slide = selectedSlide();
+        if (!slide) return;
+        commit("Apply text edit");
+        let heading = slide.querySelector('[data-step2-role="title"], h1, h2, h3, h4');
+        if (!heading) {
+          heading = state.doc.createElement("h2");
+          heading.setAttribute("data-step2-role", "title");
+          slide.prepend(heading);
+        }
+        if (els.titleInput.value.trim()) {
+          heading.textContent = els.titleInput.value.trim();
+        }
+
+        let paragraph = slide.querySelector('[data-step2-role="body"], p, li, figcaption, blockquote');
+        if (!paragraph) {
+          paragraph = state.doc.createElement("p");
+          paragraph.setAttribute("data-step2-role", "body");
+          slide.appendChild(paragraph);
+        }
+        if (els.bodyInput.value.trim()) paragraph.textContent = els.bodyInput.value.trim();
+        render();
+      }
+
+      function syncFromPreview() {
+        const frameDoc = els.preview.contentDocument;
+        if (!frameDoc) return;
+        const source =
+          frameDoc.querySelector(".step2-preview-root > *") ||
+          frameDoc.querySelector(`[data-step2-index="${state.selected}"]`) ||
+          frameDoc.querySelector("section.slide, .slide, [data-slide], .step2-preview-root > *");
+        const target = selectedSlide();
+        if (!source || !target) return;
+        commit("Sync selected slide from preview");
+        target.outerHTML = source.outerHTML;
+        render();
+      }
+
+      function undo() {
+        if (!state.history.length || !state.doc) return;
+        const current = snapshot();
+        const prev = state.history.pop();
+        if (current) {
+          state.future.push(current);
+          if (state.future.length > MAX_HISTORY) state.future.shift();
+        }
+        pushChange("Undo");
+        renderChangeLog();
+        restoreSnapshot(prev);
+      }
+
+      function redo() {
+        if (!state.future.length || !state.doc) return;
+        const current = snapshot();
+        const next = state.future.pop();
+        if (current) {
+          state.history.push(current);
+          if (state.history.length > MAX_HISTORY) state.history.shift();
+        }
+        pushChange("Redo");
+        renderChangeLog();
+        restoreSnapshot(next);
+      }
+
+      function downloadEdited() {
+        if (!state.doc) return;
+        const html = cleanBeforeExport(state.doc);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
+        state.blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = state.blobUrl;
+        a.download = "step2a-edited.html";
+        a.click();
+      }
+
+      function loadFromStorage() {
+        const html = localStorage.getItem(STORAGE_KEY) || "";
+        if (!html.trim()) {
+          alert("Step1 result not found. Generate Step1 first.");
+          return;
+        }
+        loadHtml(html);
+      }
+
+      els.btnLoadStorage.addEventListener("click", loadFromStorage);
+      els.btnDownload.addEventListener("click", downloadEdited);
+      els.btnUndo.addEventListener("click", undo);
+      els.btnRedo.addEventListener("click", redo);
+      els.btnMoveUp.addEventListener("click", () => moveSelected(-1));
+      els.btnMoveDown.addEventListener("click", () => moveSelected(1));
+      els.btnDuplicate.addEventListener("click", duplicateSelected);
+      els.btnDelete.addEventListener("click", deleteSelected);
+      els.btnToggleHide.addEventListener("click", toggleHideSelected);
+      els.btnApplyText.addEventListener("click", applyText);
+      els.btnSyncFromFrame.addEventListener("click", syncFromPreview);
+
+      els.fileInput.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        loadHtml(text);
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+          e.preventDefault();
+          undo();
+        }
+        if ((e.ctrlKey && (e.key === "y" || e.key === "Y")) || (e.ctrlKey && e.shiftKey && (e.key === "z" || e.key === "Z"))) {
+          e.preventDefault();
+          redo();
+        }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        if (state.blobUrl) URL.revokeObjectURL(state.blobUrl);
+      });
+
+      try {
+        const html = localStorage.getItem(STORAGE_KEY) || "";
+        if (html.trim()) loadHtml(html);
+        else render();
+      } catch (_) {
+        render();
+      }
+    </script>
+  </body>
+</html>
