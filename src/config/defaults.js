@@ -12,7 +12,7 @@ const DEFAULTS = {
   TOTAL_LLM_BUDGET_MS: 80000,
   ATTEMPT_TIMEOUT_MS: 35000,
   MIN_LLM_REMAINING_BUDGET_MS: 5000,
-  MODEL_CANDIDATES: ["gemini-3-flash-preview", "gemini-2.5-flash"],
+  MODEL_CANDIDATES: ["gemini-2.5-flash", "gemini-3-flash-preview"],
   MAX_COMBINED_CHARS: 20000,
   MIN_SLIDES_REQUIRED: 2,
   RECOMMENDED_SLIDES: 6,

@@ -11,6 +11,7 @@ const { finalizeHtmlDocument } = require("../html/finalize/finalizeHtmlDocument"
 const { countSlides, isMeaningfulHtml } = require("../html/postprocess/meaningful");
 const { ensureInteractiveDeckHtml } = require("../html/postprocess/navigation");
 const { renderHouseFallback } = require("../html/fallback/houseRenderer");
+const { runNetworkDiagnostics } = require("../diagnostics/network");
 
 function shortHash(value) {
   return crypto
@@ -80,6 +81,7 @@ async function generatePipeline({ files }) {
     }
 
     const baseMeta = {
+      diagnosticVersion: "obs-v1",
       hasApiKey: Boolean(env.GEMINI_API_KEY),
       llmAttempted: false,
       llmAttempts: [],
@@ -93,6 +95,7 @@ async function generatePipeline({ files }) {
       ssotInputLength: 0,
       ssotInputHash: "",
       extractionMethodFinal: "none",
+      networkDiagnostics: null,
       // Keep legacy semantics for compatibility with existing dashboards.
       rawLength: 0,
       extractedLength: 0,
@@ -139,6 +142,9 @@ async function generatePipeline({ files }) {
       ? createTinySmokePrompt()
       : `${prompts.system}\n\n${prompts.user}`;
     setLlmInputMeta(llmPrompt);
+    if (baseMeta.tinySmokeEnabled) {
+      baseMeta.networkDiagnostics = await runNetworkDiagnostics();
+    }
     baseMeta.llmAttempted = true;
     const genStart = Date.now();
     const llmResult = await runWithModelFallback({
