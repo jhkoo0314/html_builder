@@ -10,6 +10,34 @@ const { L3BuildError } = require("../../l3/errors");
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+function normalizeStyleMode(value) {
+  const mode = String(value || "").toLowerCase();
+  if (mode === "extreme") return "extreme";
+  if (mode === "creative") return "creative";
+  return "normal";
+}
+
+function evaluateDesignQuality({ html, slideCount, navLogic, warnings }) {
+  const mergedWarnings = Array.isArray(warnings) ? warnings.slice() : [];
+  if (!navLogic) mergedWarnings.push("NAV_LOGIC_MISSING");
+  if (slideCount >= 31 && slideCount <= 45) mergedWarnings.push("HIGH_SLIDE_COUNT_WARN");
+  if (slideCount >= 46) mergedWarnings.push("SLIDE_COUNT_TOO_HIGH");
+
+  if (!String(html || "").trim()) {
+    return { status: "FAIL-DESIGN", warnings: mergedWarnings, reason: "EMPTY_HTML" };
+  }
+  if (slideCount <= 1 || slideCount >= 46) {
+    return { status: "FAIL-DESIGN", warnings: mergedWarnings, reason: "SLIDE_COUNT_OUT_OF_RANGE" };
+  }
+  if (slideCount >= 31) {
+    return { status: "PASS-WARN", warnings: mergedWarnings, reason: "HIGH_SLIDE_COUNT" };
+  }
+  if (mergedWarnings.length > 0) {
+    return { status: "PASS-WARN", warnings: mergedWarnings, reason: "WARNINGS_PRESENT" };
+  }
+  return { status: "PASS-DESIGN", warnings: mergedWarnings, reason: "OK" };
+}
+
 router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
   try {
     const startedAt = Date.now();
@@ -33,14 +61,15 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
     let result;
     let renderMs = 0;
     try {
+      const styleMode = normalizeStyleMode(req.body.styleMode);
       const renderStart = Date.now();
       result = await renderDirect({
         analysis: analyzed.analysis,
         combinedText: analyzed.combinedText,
         sourceFiles: analyzed.sourceFiles,
         designPrompt: typeof req.body.designPrompt === "string" ? req.body.designPrompt : "",
-        styleMode: String(req.body.styleMode || "creative"),
-        purposeMode: String(req.body.purposeMode || "general"),
+        styleMode,
+        purposeMode: "general",
       });
       renderMs = Date.now() - renderStart;
     } catch (error) {
@@ -59,8 +88,15 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       Number.isFinite(Number(variantMeta.slideCount)) && Number(variantMeta.slideCount) > 0
         ? Number(variantMeta.slideCount)
         : countSlides(html);
+    const navLogic = variantMeta.navLogic !== false;
+    const designQuality = evaluateDesignQuality({
+      html,
+      slideCount: effectiveSlideCount,
+      navLogic,
+      warnings: Array.isArray(variantMeta.warnings) ? variantMeta.warnings : [],
+    });
     const isFallback = variant.renderMode === "fallback" || result.mode === "fallback-rule-based";
-    const status = isFallback ? "FALLBACK" : "SUCCESS";
+    const status = designQuality.status;
     const whyFallback = isFallback ? (variant.whyFallback || "UNKNOWN") : "N/A";
 
     const meta = {
@@ -68,8 +104,8 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       mode: "direct",
       status,
       creativeMode: variantMeta.creativeMode === true,
-      styleMode: variantMeta.styleMode || "creative",
-      purposeMode: variantMeta.purposeMode || "general",
+      styleMode: variantMeta.styleMode || "normal",
+      purposeMode: "general",
       slideCount: effectiveSlideCount,
       timings: {
         analyzeMs,
@@ -87,7 +123,8 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
           : null,
         slideCount: effectiveSlideCount,
       },
-      warnings: Array.isArray(variantMeta.warnings) ? variantMeta.warnings : [],
+      warnings: designQuality.warnings,
+      qualityReason: designQuality.reason,
     };
 
     return res.json({
@@ -96,7 +133,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       mode: "direct",
       status,
       styleMode: meta.styleMode,
-      purposeMode: meta.purposeMode,
+      purposeMode: "general",
       html,
       whyFallback,
       llmAttempts: meta.llmAttempts,

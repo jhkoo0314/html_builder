@@ -102,15 +102,9 @@
           <div class="row">
             <label for="styleMode">스타일 모드</label>
             <select id="styleMode">
-              <option value="creative" selected>Creative (기본)</option>
+              <option value="normal" selected>Normal (기본)</option>
+              <option value="creative">Creative</option>
               <option value="extreme">Extreme</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="purposeMode">목적 모드</label>
-            <select id="purposeMode">
-              <option value="general" selected>General</option>
-              <option value="table">Table</option>
             </select>
           </div>
           <div class="actions">
@@ -137,7 +131,6 @@
         directFiles: document.getElementById("directFiles"),
         sourceText: document.getElementById("sourceText"),
         styleMode: document.getElementById("styleMode"),
-        purposeMode: document.getElementById("purposeMode"),
         preview: document.getElementById("preview"),
         logs: document.getElementById("logs"),
         chips: document.getElementById("chips"),
@@ -175,7 +168,7 @@
       function elapsedMs() { return state.startedAt ? (Date.now() - state.startedAt) : 0; }
       function renderMeta(meta) {
         els.meta.innerHTML = "";
-        const keys = ["runId", "mode", "status", "styleMode", "purposeMode", "creativeMode", "slideCount", "timings.totalMs", "timings.generateMs", "timings.repairMs", "whyFallback", "error"];
+        const keys = ["runId", "mode", "status", "styleMode", "creativeMode", "slideCount", "timings.totalMs", "timings.generateMs", "timings.repairMs", "whyFallback", "error"];
         keys.forEach((k) => {
           const v = k.split(".").reduce((acc, x) => (acc && acc[x] !== undefined ? acc[x] : undefined), meta);
           const div = document.createElement("div");
@@ -220,8 +213,7 @@
               "pasted-input.txt"
             );
           }
-          form.append("styleMode", els.styleMode.value || "creative");
-          form.append("purposeMode", els.purposeMode.value || "general");
+          form.append("styleMode", els.styleMode.value || "normal");
           const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
           log(`Uploading ${payloadCount} input(s)`);
           log("Calling /api/l3/build-direct");
@@ -239,8 +231,7 @@
           setPreviewHtml(html);
           renderChips([
             "mode: direct",
-            `style: ${els.styleMode.value || "creative"}`,
-            `purpose: ${els.purposeMode.value || "general"}`,
+            `style: ${els.styleMode.value || "normal"}`,
             `inputs: ${payloadCount}`,
             pastedText ? "text: pasted" : "text: none"
           ]);
@@ -248,9 +239,8 @@
           renderMeta({
             runId: json.runId || variant.runId || null,
             mode: "direct",
-            status: (variant.meta && variant.meta.status) || json.status || "SUCCESS",
-            styleMode: (variant.meta && variant.meta.styleMode) || json.styleMode || (els.styleMode.value || "creative"),
-            purposeMode: (variant.meta && variant.meta.purposeMode) || json.purposeMode || (els.purposeMode.value || "general"),
+            status: (variant.meta && variant.meta.status) || json.status || "PASS-DESIGN",
+            styleMode: (variant.meta && variant.meta.styleMode) || json.styleMode || (els.styleMode.value || "normal"),
             creativeMode: (variant.meta && variant.meta.creativeMode) || json.creativeMode || false,
             slideCount: variant.meta && variant.meta.slideCount,
             timings: (variant.meta && variant.meta.timings) || {},

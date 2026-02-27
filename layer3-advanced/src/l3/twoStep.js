@@ -110,7 +110,7 @@ async function renderDirect({ analysis, combinedText, sourceFiles, styleMode, pu
     combinedText,
     sourceFiles,
     designPrompt: [analysisHint, designPrompt || ""].filter(Boolean).join("\n\n"),
-    creativeMode: true,
+    creativeMode: String(styleMode || "").toLowerCase() !== "normal",
     styleMode,
     purposeMode,
   });
@@ -120,4 +120,3 @@ module.exports = {
   analyzeDirect,
   renderDirect,
 };
-

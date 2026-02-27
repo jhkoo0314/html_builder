@@ -36,17 +36,6 @@ function createTinySmokePrompt() {
   ].join("\n");
 }
 
-function countTableSlides(html) {
-  const sectionRegex = /<section\b[\s\S]*?<\/section>/gi;
-  const sections = String(html || "").match(sectionRegex) || [];
-  if (!sections.length) return 0;
-  let tableSlides = 0;
-  sections.forEach((section) => {
-    if (/<table\b/i.test(section)) tableSlides += 1;
-  });
-  return tableSlides;
-}
-
 function buildResponse({
   html,
   mode,
@@ -92,7 +81,7 @@ async function generatePipeline({
   sourceFiles = [],
   designPrompt = "",
   creativeMode,
-  styleMode = "creative",
+  styleMode = "normal",
   purposeMode = "general",
 }) {
   const started = Date.now();
@@ -102,12 +91,13 @@ async function generatePipeline({
       ? sourceFiles
       : (files || []).map((f) => f.originalname);
   let repairAttempted = false;
-  const mode = String(styleMode || "creative").toLowerCase() === "extreme" ? "extreme" : "creative";
-  const purpose = String(purposeMode || "general").toLowerCase() === "table" ? "table" : "general";
+  const inputMode = String(styleMode || "normal").toLowerCase();
+  const mode = inputMode === "extreme" ? "extreme" : (inputMode === "creative" ? "creative" : "normal");
+  const purpose = "general";
   const creativeEnabled =
     typeof creativeMode === "boolean"
       ? creativeMode
-      : DEFAULTS.CREATIVE_MODE_DEFAULT;
+      : mode !== "normal";
 
   if ((!files || files.length === 0) && !String(combinedText || "").trim()) {
     throw new Error("No documents uploaded.");
@@ -288,17 +278,12 @@ async function generatePipeline({
     const finalized = finalizeHtmlDocument(html);
     const nav = ensureInteractiveDeckHtml(finalized.html);
     const slideCount = countSlides(nav.html);
-    const tableSlideCount = countTableSlides(nav.html);
-    const tableSlideRatio = slideCount > 0 ? tableSlideCount / slideCount : 0;
     baseMeta.slideCount = slideCount;
     baseMeta.navLogic = true;
     baseMeta.extractionMethodFinal = extractionMethod || "none";
-    baseMeta.tableSlideCount = tableSlideCount;
-    baseMeta.tableSlideRatio = Number(tableSlideRatio.toFixed(3));
 
     const failedByContract = slideCount < DEFAULTS.MIN_SLIDES_REQUIRED;
     const failedByStrictMeaning = !isMeaningfulHtml(nav.html);
-    const tableOverused = purpose === "table" && slideCount >= 4 && tableSlideRatio > 0.7;
     const needsRepair = creativeEnabled ? failedByContract : (failedByStrictMeaning || failedByContract);
 
     if (needsRepair) {
@@ -359,45 +344,6 @@ async function generatePipeline({
         sourceFiles: resolvedSourceFiles,
         title: "Fallback Deck",
       });
-    }
-
-    if (tableOverused && !repairAttempted) {
-      repairAttempted = true;
-      const repairStartedAt = Date.now();
-      const repairedRaw = await attemptRepair({ env, raw: nav.html, enabled: true });
-      baseMeta.timings.repairMs += Date.now() - repairStartedAt;
-      if (repairedRaw) {
-        const repairedExtracted = extractHtmlFromText(repairedRaw);
-        const repairedHtml = repairedExtracted.html || repairedRaw;
-        const finalized2 = finalizeHtmlDocument(repairedHtml);
-        const nav2 = ensureInteractiveDeckHtml(finalized2.html);
-        const slideCount2 = countSlides(nav2.html);
-        const tableSlides2 = countTableSlides(nav2.html);
-        const tableRatio2 = slideCount2 > 0 ? tableSlides2 / slideCount2 : 0;
-        // Accept only if structure is valid and table overuse is reduced.
-        if (slideCount2 >= DEFAULTS.MIN_SLIDES_REQUIRED && tableRatio2 <= 0.7) {
-          baseMeta.slideCount = slideCount2;
-          baseMeta.navLogic = true;
-          baseMeta.extractionMethodFinal =
-            repairedExtracted.extractionMethod || extractionMethod || "none";
-          baseMeta.tableSlideCount = tableSlides2;
-          baseMeta.tableSlideRatio = Number(tableRatio2.toFixed(3));
-          baseMeta.timings.totalMs = Date.now() - started;
-          return buildResponse({
-            html: nav2.html,
-            mode: "llm-gemini",
-            renderMode: "repair",
-            extractionMethod: repairedExtracted.extractionMethod || extractionMethod,
-            finalizeApplied: finalized2.finalizeApplied,
-            repairAttempted,
-            whyFallback: "",
-            meta: baseMeta,
-            sourceFiles: resolvedSourceFiles,
-            title: "Generated Deck",
-          });
-        }
-      }
-      // If diversification repair fails, keep original successful output instead of fallback.
     }
 
     baseMeta.timings.totalMs = Date.now() - started;

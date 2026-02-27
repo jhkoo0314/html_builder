@@ -1,11 +1,12 @@
 "use strict";
 
 function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, styleMode, purposeMode }) {
-  const creativeHint = String(creativeMode) === "true";
-  const mode = String(styleMode || "creative").toLowerCase();
+  const modeRaw = String(styleMode || "normal").toLowerCase();
+  const mode = modeRaw === "extreme" ? "extreme" : (modeRaw === "creative" ? "creative" : "normal");
+  const creativeHint = String(creativeMode) === "true" || mode !== "normal";
+  const normalHint = mode === "normal";
   const extremeHint = mode === "extreme";
-  const purpose = String(purposeMode || "general").toLowerCase();
-  const tableHint = purpose === "table";
+  const purpose = "general";
   const system = [
     "You are a presentation HTML generator.",
     "Return HTML only. No markdown.",
@@ -23,11 +24,8 @@ function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, st
     "Include print CSS with page-break per slide.",
     "Use <section class=\"slide\"> for each slide and keep at least 2 slides.",
     "Use Tailwind CDN utility classes for styling.",
-    tableHint
-      ? "Purpose mode table: prefer tables only for comparison/metric-heavy sections, but keep overall deck mixed with narrative, cards, and summary slides."
-      : "",
-    tableHint
-      ? "Target balance in table mode: roughly 20-50% of slides may use tables. Avoid converting every slide into a table."
+    normalHint
+      ? "Normal mode: favor clean, balanced, presentation-safe design with mostly light backgrounds and restrained font weight."
       : "",
     extremeHint
       ? "Extreme mode: push visual experimentation aggressively with bold layouts and unusual compositions while preserving readability."
@@ -54,7 +52,6 @@ function createRepairPrompt(rawHtml) {
     "If slides are fewer than 2 or <section class=\"slide\"> is missing, restructure into 2+ section.slide blocks.",
     "Do not change slide content unless required to fix breakage.",
     "Preserve slide count unless slides are empty or structurally broken.",
-    "If the deck overuses one layout (for example all-table slides), diversify layouts while preserving key content.",
     "Return complete HTML only.",
     "Input:",
     rawHtml,
