@@ -21,6 +21,12 @@ class StatusStore {
         port: null,
         command: null,
         cwd: null,
+        lastHealthAt: null,
+        lastHealthOk: null,
+        lastHealthCode: null,
+        lastHealthError: null,
+        consecutiveFailures: 0,
+        unhealthySince: null,
       });
       this.logs.set(key, []);
     });
@@ -48,6 +54,23 @@ class StatusStore {
     if (!current) return;
     this.setServiceMeta(key, {
       restartCount: (current.restartCount || 0) + 1,
+    });
+  }
+
+  setHealthState(key, health) {
+    const current = this.services.get(key);
+    if (!current) return;
+    this.setServiceMeta(key, {
+      lastHealthAt: nowIso(),
+      lastHealthOk: Boolean(health.ok),
+      lastHealthCode: health.code == null ? null : health.code,
+      lastHealthError: health.error || null,
+      consecutiveFailures:
+        typeof health.consecutiveFailures === "number"
+          ? health.consecutiveFailures
+          : current.consecutiveFailures || 0,
+      unhealthySince:
+        health.unhealthySince === undefined ? current.unhealthySince || null : health.unhealthySince,
     });
   }
 
@@ -81,4 +104,3 @@ module.exports = {
   StatusStore,
   MAX_LOG_LINES,
 };
-

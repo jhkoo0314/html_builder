@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const http = require("http");
 const { spawn } = require("child_process");
 const { spawnSync } = require("child_process");
 
@@ -14,19 +15,105 @@ function splitLines(buffered, chunk) {
 }
 
 class ProcessManager {
-  constructor({ services, statusStore, artifactsRoot }) {
+  constructor({
+    services,
+    statusStore,
+    artifactsRoot,
+    healthCheckIntervalMs,
+    healthCheckTimeoutMs,
+    healthCheckStartupGraceMs,
+    healthFailureThreshold,
+    unhealthySustainMs,
+    restartMaxAttempts,
+    restartWindowMs,
+    restartBackoffBaseMs,
+  }) {
     this.services = services;
     this.serviceMap = new Map(services.map((svc) => [svc.key, svc]));
     this.statusStore = statusStore;
     this.artifactsRoot = artifactsRoot;
     this.children = new Map();
     this.shuttingDown = false;
+    this.healthTimer = null;
+    this.healthPollInFlight = false;
+    this.restartTimers = new Map();
+    this.healthRuntime = new Map();
+    this.restartHistory = new Map();
+
+    this.healthCheckIntervalMs = healthCheckIntervalMs;
+    this.healthCheckTimeoutMs = healthCheckTimeoutMs;
+    this.healthCheckStartupGraceMs = healthCheckStartupGraceMs;
+    this.healthFailureThreshold = healthFailureThreshold;
+    this.unhealthySustainMs = unhealthySustainMs;
+    this.restartMaxAttempts = restartMaxAttempts;
+    this.restartWindowMs = restartWindowMs;
+    this.restartBackoffBaseMs = restartBackoffBaseMs;
+
+    if (!Number.isFinite(this.healthCheckIntervalMs) || this.healthCheckIntervalMs <= 0) {
+      this.healthCheckIntervalMs = 2000;
+    }
+    if (!Number.isFinite(this.healthCheckTimeoutMs) || this.healthCheckTimeoutMs <= 0) {
+      this.healthCheckTimeoutMs = 800;
+    }
+    if (!Number.isFinite(this.healthCheckStartupGraceMs) || this.healthCheckStartupGraceMs < 0) {
+      this.healthCheckStartupGraceMs = 30000;
+    }
+    if (!Number.isFinite(this.healthFailureThreshold) || this.healthFailureThreshold <= 0) {
+      this.healthFailureThreshold = 3;
+    }
+    if (!Number.isFinite(this.unhealthySustainMs) || this.unhealthySustainMs < 0) {
+      this.unhealthySustainMs = 10000;
+    }
+    if (!Number.isFinite(this.restartMaxAttempts) || this.restartMaxAttempts <= 0) {
+      this.restartMaxAttempts = 5;
+    }
+    if (!Number.isFinite(this.restartWindowMs) || this.restartWindowMs <= 0) {
+      this.restartWindowMs = 300000;
+    }
+    if (!Number.isFinite(this.restartBackoffBaseMs) || this.restartBackoffBaseMs <= 0) {
+      this.restartBackoffBaseMs = 500;
+    }
+
+    this.services.forEach((service) => {
+      this.healthRuntime.set(service.key, {
+        consecutiveFailures: 0,
+        startupGraceUntil: 0,
+        unhealthySince: null,
+      });
+      this.restartHistory.set(service.key, []);
+    });
   }
 
   startAll() {
     this.services.forEach((service) => {
       this.startService(service.key);
     });
+    this.startHealthPolling();
+  }
+
+  getHealthRuntime(serviceKey) {
+    return this.healthRuntime.get(serviceKey) || {
+      consecutiveFailures: 0,
+      startupGraceUntil: 0,
+      unhealthySince: null,
+    };
+  }
+
+  setHealthRuntime(serviceKey, patch) {
+    const current = this.getHealthRuntime(serviceKey);
+    this.healthRuntime.set(serviceKey, {
+      ...current,
+      ...patch,
+    });
+  }
+
+  startHealthPolling() {
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    this.healthTimer = setInterval(() => {
+      this.pollAllHealth().catch((error) => {
+        process.stderr.write(`[health] poll error: ${error.message}\n`);
+      });
+    }, this.healthCheckIntervalMs);
   }
 
   startService(serviceKey) {
@@ -91,13 +178,17 @@ class ProcessManager {
       command: commandLine,
       cwd: service.cwd,
     });
+    this.setHealthRuntime(serviceKey, {
+      consecutiveFailures: 0,
+      unhealthySince: null,
+      startupGraceUntil: Date.now() + this.healthCheckStartupGraceMs,
+    });
 
     this.bindStreamLogs(service, child, "stdout");
     this.bindStreamLogs(service, child, "stderr");
 
     child.once("spawn", () => {
-      // Phase 1 has no health polling yet. Running process is treated as healthy.
-      this.statusStore.setStatus(serviceKey, "healthy", { pid: child.pid });
+      this.statusStore.setStatus(serviceKey, "starting", { pid: child.pid });
     });
 
     child.once("error", (error) => {
@@ -113,9 +204,13 @@ class ProcessManager {
       const line = `[${service.label}] exited code=${String(code)} signal=${String(signal)}`;
       this.statusStore.appendLog(serviceKey, line);
       process.stdout.write(`${line}\n`);
-      this.statusStore.setStatus(serviceKey, this.shuttingDown ? "stopped" : "crashed", {
+      const nextStatus = this.shuttingDown ? "stopped" : "crashed";
+      this.statusStore.setStatus(serviceKey, nextStatus, {
         pid: null,
       });
+      if (!this.shuttingDown) {
+        this.scheduleRestart(serviceKey, "exit");
+      }
     });
   }
 
@@ -143,6 +238,15 @@ class ProcessManager {
 
   async shutdownAll() {
     this.shuttingDown = true;
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer);
+      this.healthTimer = null;
+    }
+    for (const timer of this.restartTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.restartTimers.clear();
+
     const entries = Array.from(this.children.entries());
     entries.forEach(([serviceKey, child]) => {
       if (!child || child.killed) return;
@@ -185,6 +289,166 @@ class ProcessManager {
         this.terminateByPort(service.port, true);
       });
     }
+  }
+
+  async pollAllHealth() {
+    if (this.shuttingDown) return;
+    if (this.healthPollInFlight) return;
+    this.healthPollInFlight = true;
+    try {
+      await Promise.all(this.services.map((service) => this.pollServiceHealth(service)));
+    } finally {
+      this.healthPollInFlight = false;
+    }
+  }
+
+  async pollServiceHealth(service) {
+    const serviceKey = service.key;
+    const state = this.getHealthRuntime(serviceKey);
+    const now = Date.now();
+    const inGrace = now < state.startupGraceUntil;
+
+    const child = this.children.get(serviceKey);
+    if (!child && !this.shuttingDown) {
+      this.statusStore.setHealthState(serviceKey, {
+        ok: false,
+        code: null,
+        error: "NO_PROCESS",
+        consecutiveFailures: state.consecutiveFailures,
+        unhealthySince: state.unhealthySince,
+      });
+      this.scheduleRestart(serviceKey, "no-process");
+      return;
+    }
+
+    const health = await this.fetchHealth(service.port);
+    if (health.ok) {
+      this.setHealthRuntime(serviceKey, {
+        consecutiveFailures: 0,
+        unhealthySince: null,
+      });
+      this.statusStore.setHealthState(serviceKey, {
+        ok: true,
+        code: health.code,
+        error: null,
+        consecutiveFailures: 0,
+        unhealthySince: null,
+      });
+      this.statusStore.setStatus(serviceKey, "healthy");
+      return;
+    }
+
+    if (inGrace) {
+      this.statusStore.setHealthState(serviceKey, {
+        ok: false,
+        code: health.code,
+        error: health.error || "STARTUP_GRACE",
+        consecutiveFailures: state.consecutiveFailures,
+        unhealthySince: state.unhealthySince,
+      });
+      this.statusStore.setStatus(serviceKey, "starting");
+      return;
+    }
+
+    const nextFailures = (state.consecutiveFailures || 0) + 1;
+    let nextUnhealthySince = state.unhealthySince;
+    if (nextFailures >= this.healthFailureThreshold && !nextUnhealthySince) {
+      nextUnhealthySince = now;
+    }
+    this.setHealthRuntime(serviceKey, {
+      consecutiveFailures: nextFailures,
+      unhealthySince: nextUnhealthySince,
+    });
+    this.statusStore.setHealthState(serviceKey, {
+      ok: false,
+      code: health.code,
+      error: health.error || "HEALTH_FAILED",
+      consecutiveFailures: nextFailures,
+      unhealthySince: nextUnhealthySince ? new Date(nextUnhealthySince).toISOString() : null,
+    });
+
+    if (nextFailures >= this.healthFailureThreshold) {
+      this.statusStore.setStatus(serviceKey, "unhealthy", {
+        unhealthySince: nextUnhealthySince ? new Date(nextUnhealthySince).toISOString() : null,
+      });
+      if (nextUnhealthySince && now - nextUnhealthySince >= this.unhealthySustainMs) {
+        this.scheduleRestart(serviceKey, "unhealthy-sustain");
+      }
+    }
+  }
+
+  fetchHealth(port) {
+    return new Promise((resolve) => {
+      const req = http.get(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/healthz",
+          timeout: this.healthCheckTimeoutMs,
+        },
+        (res) => {
+          const code = Number(res.statusCode || 0);
+          res.resume();
+          resolve({
+            ok: code >= 200 && code < 300,
+            code,
+            error: code >= 200 && code < 300 ? null : `HTTP_${code}`,
+          });
+        }
+      );
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({ ok: false, code: null, error: "TIMEOUT" });
+      });
+      req.on("error", (error) => {
+        resolve({ ok: false, code: null, error: error.code || error.message || "REQUEST_ERROR" });
+      });
+    });
+  }
+
+  scheduleRestart(serviceKey, reason) {
+    if (this.shuttingDown) return;
+    if (this.restartTimers.has(serviceKey)) return;
+    const service = this.serviceMap.get(serviceKey);
+    if (!service) return;
+
+    const now = Date.now();
+    const history = (this.restartHistory.get(serviceKey) || []).filter(
+      (ts) => now - ts <= this.restartWindowMs
+    );
+
+    if (history.length >= this.restartMaxAttempts) {
+      this.restartHistory.set(serviceKey, history);
+      this.statusStore.setStatus(serviceKey, "failed");
+      this.statusStore.appendLog(
+        serviceKey,
+        `[${service.label}] restart blocked: max attempts exceeded (${this.restartMaxAttempts}/${this.restartWindowMs}ms)`
+      );
+      return;
+    }
+
+    const attempt = history.length + 1;
+    history.push(now);
+    this.restartHistory.set(serviceKey, history);
+    this.statusStore.incrementRestartCount(serviceKey);
+
+    const jitter = Math.floor(Math.random() * 251);
+    const delay = this.restartBackoffBaseMs * 2 ** (attempt - 1) + jitter;
+    this.statusStore.appendLog(
+      serviceKey,
+      `[${service.label}] restart scheduled in ${delay}ms (attempt ${attempt}, reason=${reason})`
+    );
+
+    const timer = setTimeout(() => {
+      this.restartTimers.delete(serviceKey);
+      if (this.shuttingDown) return;
+      const old = this.children.get(serviceKey);
+      if (old && !old.killed) {
+        this.terminateChild(old, true);
+      }
+      this.startService(serviceKey);
+    }, delay);
+    this.restartTimers.set(serviceKey, timer);
   }
 
   terminateChild(child, force) {

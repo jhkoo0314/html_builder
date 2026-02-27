@@ -15,6 +15,14 @@ const app = express();
 const repoRoot = path.resolve(__dirname, "..", "..");
 const launcherPort = intEnv("LAUNCHER_PORT", 5170);
 const artifactsRoot = process.env.ARTIFACTS_ROOT || path.join(repoRoot, ".artifacts");
+const healthCheckIntervalMs = intEnv("HEALTH_CHECK_INTERVAL_MS", 2000);
+const healthCheckTimeoutMs = intEnv("HEALTH_CHECK_TIMEOUT_MS", 800);
+const healthCheckStartupGraceMs = intEnv("HEALTH_CHECK_STARTUP_GRACE_MS", 30000);
+const healthFailureThreshold = intEnv("HEALTH_FAILURE_THRESHOLD", 3);
+const unhealthySustainMs = intEnv("UNHEALTHY_SUSTAIN_MS", 10000);
+const restartMaxAttempts = intEnv("RESTART_MAX_ATTEMPTS", 5);
+const restartWindowMs = intEnv("RESTART_WINDOW_MS", 300000);
+const restartBackoffBaseMs = intEnv("RESTART_BACKOFF_BASE_MS", 500);
 
 if (!fs.existsSync(artifactsRoot)) {
   fs.mkdirSync(artifactsRoot, { recursive: true });
@@ -52,6 +60,14 @@ const manager = new ProcessManager({
   services,
   statusStore,
   artifactsRoot,
+  healthCheckIntervalMs,
+  healthCheckTimeoutMs,
+  healthCheckStartupGraceMs,
+  healthFailureThreshold,
+  unhealthySustainMs,
+  restartMaxAttempts,
+  restartWindowMs,
+  restartBackoffBaseMs,
 });
 
 app.use(express.json({ limit: "1mb" }));
@@ -66,6 +82,14 @@ app.get("/api/status", (req, res) => {
       pid: process.pid,
       startedAt: new Date(Date.now() - Math.floor(process.uptime() * 1000)).toISOString(),
       uptimeMs: Math.floor(process.uptime() * 1000),
+      healthCheckIntervalMs,
+      healthCheckTimeoutMs,
+      healthCheckStartupGraceMs,
+      healthFailureThreshold,
+      unhealthySustainMs,
+      restartMaxAttempts,
+      restartWindowMs,
+      restartBackoffBaseMs,
     },
     services: statusStore.getStatusSnapshot(),
   });

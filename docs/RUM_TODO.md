@@ -80,24 +80,24 @@
 - [x] Layer3는 복제 후 독립 코드베이스로 운영됨
 
 ## Phase 2. Health polling + auto-restart
-- [ ] P2-1. 주기적 health check 구현 (`interval/timeout/startup grace`)
-- [ ] P2-2. `N=3` 연속 실패 카운트 기반 `healthy→unhealthy` 전이
-- [ ] P2-3. `exit`/`X=10s` 지속 unhealthy 트리거 재시작
-- [ ] P2-4. 재시작 window 제한(`5분 내 5회`) + exponential backoff(base `500ms`) + jitter
-- [ ] P2-5. `GET /api/status`, `GET /api/logs` 제공
+- [x] P2-1. 주기적 health check 구현 (`interval/timeout/startup grace`)
+- [x] P2-2. `N=3` 연속 실패 카운트 기반 `healthy→unhealthy` 전이
+- [x] P2-3. `exit`/`X=10s` 지속 unhealthy 트리거 재시작
+- [x] P2-4. 재시작 window 제한(`5분 내 5회`) + exponential backoff(base `500ms`) + jitter
+- [x] P2-5. `GET /api/status`, `GET /api/logs` 제공
 
 완료기준
-- [ ] 비정상 종료 또는 health 실패 시 자동 재시작 동작
-- [ ] 재시도 한도 초과 시 `failed` 상태 전이 확인
+- [x] 비정상 종료 또는 health 실패 시 자동 재시작 동작
+- [x] 재시도 한도 초과 시 `failed` 상태 전이 확인
 
 ## Phase 3. 레이어별 `/healthz` 표준화
-- [ ] P3-1. L1 `/healthz` 구현 (service/version/ready/details 포함)
-- [ ] P3-2. L2 `/healthz` 구현 (ops-only, 비즈니스 로직 비변경)
-- [ ] P3-3. L3 `/healthz` 구현 (Direct/From-run mode 정보 포함)
-- [ ] P3-4. 응답 스키마 필드 점검 (`ok, service, port, pid, uptimeMs, artifactsRoot`)
+- [x] P3-1. L1 `/healthz` 구현 (service/version/ready/details 포함)
+- [x] P3-2. L2 `/healthz` 구현 (ops-only, 비즈니스 로직 비변경)
+- [x] P3-3. L3 `/healthz` 구현 (Direct/From-run mode 정보 포함)
+- [x] P3-4. 응답 스키마 필드 점검 (`ok, service, port, pid, uptimeMs, artifactsRoot`)
 
 완료기준
-- [ ] 세 레이어 health 응답이 launcher polling과 정상 연동
+- [x] 세 레이어 health 응답이 launcher polling과 정상 연동
 
 ## Phase 4. API Gateway 프록시 연결
 - [ ] P4-1. `POST /api/run/l1/analyze` 프록시
