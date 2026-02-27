@@ -1,0 +1,29 @@
+{
+  "name": "report2slide",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node -r dotenv/config src/server.js",
+    "dev": "nodemon --exec \"node -r dotenv/config\" src/server.js",
+    "check:encoding": "node scripts/check-encoding.js --all",
+    "check:encoding:staged": "node scripts/check-encoding.js --staged",
+    "test:smoke": "node scripts/smoke-html-pipeline.js",
+    "test:nav": "node scripts/test-navigation-detection.js",
+    "test:contamination": "node scripts/test-contamination.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "mammoth": "^1.9.1",
+    "multer": "^1.4.5-lts.2",
+    "pdfjs-dist": "^5.4.296"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

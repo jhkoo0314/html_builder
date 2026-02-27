@@ -1,0 +1,7 @@
+{
+  "allowReplacementChar": [
+    "AGENT.md",
+    "scripts/check-encoding.js"
+  ],
+  "ignore": []
+}
