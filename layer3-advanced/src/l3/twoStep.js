@@ -95,7 +95,7 @@ async function analyzeDirect({ files }) {
   };
 }
 
-async function renderDirect({ analysis, combinedText, sourceFiles, styleMode, purposeMode, designPrompt }) {
+async function renderDirect({ analysis, combinedText, sourceFiles, styleMode, toneMode, purposeMode, designPrompt }) {
   const analysisHint = [
     `Title: ${analysis.docTitle}`,
     `Summary: ${analysis.docSummary}`,
@@ -112,6 +112,7 @@ async function renderDirect({ analysis, combinedText, sourceFiles, styleMode, pu
     designPrompt: [analysisHint, designPrompt || ""].filter(Boolean).join("\n\n"),
     creativeMode: String(styleMode || "").toLowerCase() !== "normal",
     styleMode,
+    toneMode,
     purposeMode,
   });
 }

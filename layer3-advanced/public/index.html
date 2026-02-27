@@ -111,6 +111,14 @@
               <option value="extreme">Extreme</option>
             </select>
           </div>
+          <div class="row">
+            <label for="toneMode">Tone mode</label>
+            <select id="toneMode">
+              <option value="auto" selected>Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
           <div class="actions">
             <button id="btnDirect" class="btn-primary" type="button">Run Direct Build</button>
             <a id="downloadDeck" class="btn btn-secondary" href="#" download="layer3-deck.html">Download HTML</a>
@@ -138,6 +146,7 @@
         sourceText: document.getElementById("sourceText"),
         step2HtmlFile: document.getElementById("step2HtmlFile"),
         styleMode: document.getElementById("styleMode"),
+        toneMode: document.getElementById("toneMode"),
         preview: document.getElementById("preview"),
         logs: document.getElementById("logs"),
         chips: document.getElementById("chips"),
@@ -200,6 +209,7 @@
           "mode",
           "status",
           "styleMode",
+          "toneMode",
           "creativeMode",
           "slideCount",
           "timings.totalMs",
@@ -321,6 +331,7 @@
             );
           }
           form.append("styleMode", els.styleMode.value || "normal");
+          form.append("toneMode", els.toneMode.value || "auto");
 
           const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
           log(`Uploading ${payloadCount} input(s)`);
@@ -345,6 +356,7 @@
           renderChips([
             "mode: direct",
             `style: ${els.styleMode.value || "normal"}`,
+            `tone: ${els.toneMode.value || "auto"}`,
             `inputs: ${payloadCount}`,
             pastedText ? "text: pasted" : "text: none",
           ]);
@@ -355,6 +367,7 @@
             mode: "direct",
             status: (variant.meta && variant.meta.status) || json.status || "PASS-DESIGN",
             styleMode: (variant.meta && variant.meta.styleMode) || json.styleMode || (els.styleMode.value || "normal"),
+            toneMode: (variant.meta && variant.meta.toneMode) || json.toneMode || (els.toneMode.value || "auto"),
             creativeMode: (variant.meta && variant.meta.creativeMode) || json.creativeMode || false,
             slideCount: variant.meta && variant.meta.slideCount,
             timings: (variant.meta && variant.meta.timings) || {},

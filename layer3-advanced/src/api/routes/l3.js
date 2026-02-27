@@ -17,6 +17,13 @@ function normalizeStyleMode(value) {
   return "normal";
 }
 
+function normalizeToneMode(value) {
+  const mode = String(value || "").toLowerCase();
+  if (mode === "light") return "light";
+  if (mode === "dark") return "dark";
+  return "auto";
+}
+
 function evaluateDesignQuality({ html, slideCount, navLogic, warnings }) {
   const mergedWarnings = Array.isArray(warnings) ? warnings.slice() : [];
   if (!navLogic) mergedWarnings.push("NAV_LOGIC_MISSING");
@@ -75,6 +82,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
     let renderMs = 0;
     try {
       const styleMode = normalizeStyleMode(req.body.styleMode);
+      const toneMode = normalizeToneMode(req.body.toneMode);
       const renderStart = Date.now();
       result = await renderDirect({
         analysis: analyzed.analysis,
@@ -82,6 +90,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
         sourceFiles: analyzed.sourceFiles,
         designPrompt: typeof req.body.designPrompt === "string" ? req.body.designPrompt : "",
         styleMode,
+        toneMode,
         purposeMode: "general",
       });
       renderMs = Date.now() - renderStart;
@@ -118,6 +127,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       status,
       creativeMode: variantMeta.creativeMode === true,
       styleMode: variantMeta.styleMode || "normal",
+      toneMode: variantMeta.toneMode || "auto",
       purposeMode: "general",
       slideCount: effectiveSlideCount,
       timings: {
@@ -160,6 +170,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       mode: "direct",
       status,
       styleMode: meta.styleMode,
+      toneMode: meta.toneMode,
       purposeMode: "general",
       html,
       whyFallback,

@@ -42,6 +42,7 @@ function buildPromptBundle({
   designPrompt,
   creativeEnabled,
   mode,
+  toneMode,
   purpose,
   maxSourceChars = 0,
 }) {
@@ -54,6 +55,7 @@ function buildPromptBundle({
     designPrompt,
     creativeMode: String(creativeEnabled),
     styleMode: mode,
+    toneMode,
     purposeMode: purpose,
   });
   return {
@@ -124,6 +126,7 @@ async function generatePipeline({
   designPrompt = "",
   creativeMode,
   styleMode = "normal",
+  toneMode = "auto",
   purposeMode = "general",
 }) {
   const started = Date.now();
@@ -135,6 +138,9 @@ async function generatePipeline({
   let repairAttempted = false;
   const inputMode = String(styleMode || "normal").toLowerCase();
   const mode = inputMode === "extreme" ? "extreme" : (inputMode === "creative" ? "creative" : "normal");
+  const tone = String(toneMode || "auto").toLowerCase() === "light"
+    ? "light"
+    : (String(toneMode || "auto").toLowerCase() === "dark" ? "dark" : "auto");
   const purpose = "general";
   const creativeEnabled =
     typeof creativeMode === "boolean"
@@ -204,6 +210,7 @@ async function generatePipeline({
       networkDiagnostics: null,
       creativeMode: creativeEnabled,
       styleMode: mode,
+      toneMode: tone,
       purposeMode: purpose,
       rawLength: 0,
       extractedLength: 0,
@@ -269,6 +276,7 @@ async function generatePipeline({
           designPrompt: cleanDesignPrompt,
           creativeEnabled,
           mode,
+          toneMode: tone,
           purpose,
         });
     setLlmInputMeta(primaryBundle.prompt);
@@ -343,6 +351,7 @@ async function generatePipeline({
         designPrompt: cleanDesignPrompt.slice(0, 1200),
         creativeEnabled,
         mode,
+        toneMode: tone,
         purpose,
         maxSourceChars: compactRetryProfile.maxTextChars,
       });

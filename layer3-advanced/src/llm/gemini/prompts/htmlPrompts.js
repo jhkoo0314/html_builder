@@ -1,11 +1,15 @@
 "use strict";
 
-function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, styleMode, purposeMode }) {
+function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, styleMode, toneMode, purposeMode }) {
   const modeRaw = String(styleMode || "normal").toLowerCase();
   const mode = modeRaw === "extreme" ? "extreme" : (modeRaw === "creative" ? "creative" : "normal");
+  const toneRaw = String(toneMode || "auto").toLowerCase();
+  const tone = toneRaw === "light" ? "light" : (toneRaw === "dark" ? "dark" : "auto");
   const creativeHint = String(creativeMode) === "true" || mode !== "normal";
   const normalHint = mode === "normal";
   const extremeHint = mode === "extreme";
+  const lightHint = tone === "light";
+  const darkHint = tone === "dark";
   const purpose = "general";
   const system = [
     "You are a presentation HTML generator.",
@@ -33,11 +37,21 @@ function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, st
     creativeHint
       ? "Allow creative layouts, expressive typography, and bold color direction while preserving readability."
       : "Prefer conservative layout decisions optimized for reliability.",
+    lightHint
+      ? "Tone mode light: use mostly bright/light backgrounds, avoid dominant dark canvas, keep strong text contrast on light surfaces."
+      : "",
+    darkHint
+      ? "Tone mode dark: prefer dark backgrounds with readable light text, keep contrast high and avoid washed-out grays."
+      : "",
+    tone === "auto"
+      ? "Tone mode auto: choose light or dark based on content fit, but keep readability first."
+      : "",
   ].join(" ");
 
   const user = [
     `Title: ${title || "Auto-generated deck"}`,
     `Purpose mode: ${purpose}`,
+    `Tone mode: ${tone}`,
     designPrompt ? `Design intent: ${designPrompt}` : "",
     "Source text:",
     combinedText,
