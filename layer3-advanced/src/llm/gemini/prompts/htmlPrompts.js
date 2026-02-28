@@ -1,5 +1,20 @@
 "use strict";
 
+const SLIDE_TYPES = [
+  "title-cover",
+  "agenda",
+  "section-divider",
+  "executive-summary",
+  "problem-statement",
+  "insight",
+  "kpi-snapshot",
+  "comparison",
+  "process-flow",
+  "timeline-roadmap",
+  "option-recommendation",
+  "action-plan",
+];
+
 function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, styleMode, toneMode, purposeMode }) {
   const modeRaw = String(styleMode || "normal").toLowerCase();
   const mode = modeRaw === "extreme" ? "extreme" : (modeRaw === "creative" ? "creative" : "normal");
@@ -26,8 +41,17 @@ function createHtmlPrompts({ combinedText, title, designPrompt, creativeMode, st
     "Ensure first slide is visible and navigation works.",
     "Include Prev/Next buttons and keyboard support.",
     "Include print CSS with page-break per slide.",
-    "Use <section class=\"slide\"> for each slide and keep at least 2 slides.",
+    "Use <section class=\"slide\"> for each slide.",
     "Use Tailwind CDN utility classes for styling.",
+    `Allowed slide types only: ${SLIDE_TYPES.join(", ")}.`,
+    "Set data-slide-type on every section.slide using only one value from the allowed set.",
+    "Do not invent slide-type values outside the allowed set.",
+    "Do not force slide count; preserve or adapt count based on content clarity.",
+    "Keep visual/layout freedom high inside each slide type.",
+    "If source includes prior HTML/CSS, treat it as content reference only and avoid copying its style blocks, class names, or layout literally.",
+    "Prefer a fresh visual direction with stronger hierarchy, contrast, and spacing rhythm.",
+    "If numeric evidence is missing, avoid fake charts; use cards, lists, or structured text blocks instead.",
+    "Preserve user text intent and factual content; prioritize faithful layout recomposition over rewriting.",
     normalHint
       ? "Normal mode: favor clean, balanced, presentation-safe design with mostly light backgrounds and restrained font weight."
       : "",

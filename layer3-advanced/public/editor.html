@@ -50,6 +50,19 @@
         padding: 10px;
         min-height: calc(100vh - 58px);
       }
+      .layout.sidebar-left-collapsed {
+        grid-template-columns: 1fr 340px;
+      }
+      .layout.sidebar-right-collapsed {
+        grid-template-columns: 260px 1fr;
+      }
+      .layout.sidebar-left-collapsed.sidebar-right-collapsed {
+        grid-template-columns: 1fr;
+      }
+      .layout.sidebar-left-collapsed #leftPanel,
+      .layout.sidebar-right-collapsed #rightPanel {
+        display: none;
+      }
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -156,6 +169,9 @@
         <span class="hint" id="statusText">No document loaded</span>
       </div>
       <div class="right">
+        <button id="btnToggleLeftSidebar" type="button">Hide Left</button>
+        <button id="btnToggleRightSidebar" type="button">Hide Right</button>
+        <button id="btnOpenStep3" type="button" disabled>Open Step3</button>
         <input id="fileInput" type="file" accept=".html,text/html" />
         <button id="btnLoadStorage">Load Step1</button>
         <button id="btnUndo" disabled>Undo</button>
@@ -169,8 +185,8 @@
       </div>
     </header>
 
-    <main class="layout">
-      <section class="panel">
+    <main id="layout" class="layout">
+      <section id="leftPanel" class="panel">
         <h3>Slides</h3>
         <div class="stack" style="margin-bottom:8px;">
           <button id="btnMoveUp" disabled>Up</button>
@@ -186,7 +202,7 @@
         <iframe id="preview" title="Step2-A preview"></iframe>
       </section>
 
-      <section class="panel">
+      <section id="rightPanel" class="panel">
         <h3>Selected Slide</h3>
         <div class="form-row">
           <label for="titleInput">Title</label>
@@ -212,6 +228,19 @@
               <input id="styleFontSize" type="number" min="16" max="64" step="1" />
             </div>
             <div class="form-row" style="margin-bottom:0;">
+              <label for="styleFontFamily">Font family</label>
+              <select id="styleFontFamily">
+                <option value="">(keep original)</option>
+                <option value="Segoe UI, sans-serif">Segoe UI</option>
+                <option value="'Noto Sans KR', sans-serif">Noto Sans KR</option>
+                <option value="'Malgun Gothic', sans-serif">Malgun Gothic</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Courier New', monospace">Courier New</option>
+              </select>
+            </div>
+          </div>
+          <div class="inline-2" style="margin-top:6px;">
+            <div class="form-row" style="margin-bottom:0;">
               <label for="styleFontWeight">Font weight</label>
               <select id="styleFontWeight">
                 <option value="400">400</option>
@@ -221,8 +250,6 @@
                 <option value="800">800</option>
               </select>
             </div>
-          </div>
-          <div class="inline-2" style="margin-top:6px;">
             <div class="form-row" style="margin-bottom:0;">
               <label for="styleTextAlign">Align</label>
               <select id="styleTextAlign">
@@ -294,10 +321,16 @@
         history: [],
         future: [],
         changeLog: [],
+        leftSidebarOpen: true,
+        rightSidebarOpen: true,
       };
 
       const els = {
+        layout: document.getElementById("layout"),
         fileInput: document.getElementById("fileInput"),
+        btnOpenStep3: document.getElementById("btnOpenStep3"),
+        btnToggleLeftSidebar: document.getElementById("btnToggleLeftSidebar"),
+        btnToggleRightSidebar: document.getElementById("btnToggleRightSidebar"),
         btnLoadStorage: document.getElementById("btnLoadStorage"),
         btnDownload: document.getElementById("btnDownload"),
         exportProfile: document.getElementById("exportProfile"),
@@ -318,6 +351,7 @@
         changeLog: document.getElementById("changeLog"),
         styleTarget: document.querySelectorAll('input[name="styleTarget"]'),
         styleFontSize: document.getElementById("styleFontSize"),
+        styleFontFamily: document.getElementById("styleFontFamily"),
         styleFontWeight: document.getElementById("styleFontWeight"),
         styleTextAlign: document.getElementById("styleTextAlign"),
         styleColor: document.getElementById("styleColor"),
@@ -333,6 +367,24 @@
         btnApplyReplace: document.getElementById("btnApplyReplace"),
         replaceCount: document.getElementById("replaceCount"),
       };
+
+      function applySidebarLayout() {
+        if (!els.layout) return;
+        els.layout.classList.toggle("sidebar-left-collapsed", !state.leftSidebarOpen);
+        els.layout.classList.toggle("sidebar-right-collapsed", !state.rightSidebarOpen);
+        els.btnToggleLeftSidebar.textContent = state.leftSidebarOpen ? "Hide Left" : "Show Left";
+        els.btnToggleRightSidebar.textContent = state.rightSidebarOpen ? "Hide Right" : "Show Right";
+      }
+
+      function toggleLeftSidebar() {
+        state.leftSidebarOpen = !state.leftSidebarOpen;
+        applySidebarLayout();
+      }
+
+      function toggleRightSidebar() {
+        state.rightSidebarOpen = !state.rightSidebarOpen;
+        applySidebarLayout();
+      }
 
       function parseHtml(html) {
         return new DOMParser().parseFromString(html, "text/html");
@@ -382,6 +434,25 @@
       function findTargetElement(slide, mode) {
         const selectors = targetSelectors(mode);
         return slide.querySelector(selectors[0]) || slide.querySelector(selectors[1]);
+      }
+
+      function bodyTargets(slide) {
+        const all = Array.from(slide.querySelectorAll('[data-step2-role="body"], p,li,figcaption,blockquote'));
+        if (all.length) return all;
+        const one = getOrCreateTargetElement(slide, "body");
+        return one ? [one] : [];
+      }
+
+      function normalizeFontFamily(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        const lower = raw.toLowerCase();
+        if (lower.includes("noto sans kr")) return "'Noto Sans KR', sans-serif";
+        if (lower.includes("malgun gothic")) return "'Malgun Gothic', sans-serif";
+        if (lower.includes("segoe ui")) return "Segoe UI, sans-serif";
+        if (lower.includes("georgia")) return "Georgia, serif";
+        if (lower.includes("courier new")) return "'Courier New', monospace";
+        return "";
       }
 
       function getOrCreateTargetElement(slide, mode) {
@@ -550,6 +621,7 @@
         if (!cs) return null;
         return {
           fontSize: parseInt(cs.fontSize, 10) || 16,
+          fontFamily: normalizeFontFamily(cs.fontFamily || ""),
           fontWeight: String(cs.fontWeight || "400"),
           textAlign: String(cs.textAlign || "left"),
           color: rgbToHex(cs.color || "#111111"),
@@ -560,6 +632,7 @@
         const slide = selectedSlide();
         if (!slide) {
           els.styleFontSize.value = "24";
+          els.styleFontFamily.value = "";
           els.styleFontWeight.value = "700";
           els.styleTextAlign.value = "left";
           els.styleColor.value = "#111111";
@@ -572,11 +645,13 @@
         const inline = target ? target.style : null;
 
         const fontSize = inline && inline.fontSize ? parseInt(inline.fontSize, 10) : (fromPreview ? fromPreview.fontSize : 24);
+        const fontFamily = inline && inline.fontFamily ? normalizeFontFamily(inline.fontFamily) : (fromPreview ? fromPreview.fontFamily : "");
         const fontWeight = inline && inline.fontWeight ? inline.fontWeight : (fromPreview ? fromPreview.fontWeight : "700");
         const textAlign = inline && inline.textAlign ? inline.textAlign : (fromPreview ? fromPreview.textAlign : "left");
         const color = inline && inline.color ? rgbToHex(inline.color) : (fromPreview ? fromPreview.color : "#111111");
 
         els.styleFontSize.value = String(clampSize(fontSize));
+        els.styleFontFamily.value = fontFamily;
         els.styleFontWeight.value = ["400", "500", "600", "700", "800"].includes(String(fontWeight)) ? String(fontWeight) : "700";
         els.styleTextAlign.value = ["left", "center", "right"].includes(String(textAlign)) ? String(textAlign) : "left";
         els.styleColor.value = normalizeHexColor(color);
@@ -588,6 +663,7 @@
         const slides = hasDoc ? getSlides(state.doc) : [];
         const hasSlides = slides.length > 0;
 
+        els.btnOpenStep3.disabled = !hasDoc;
         els.btnDownload.disabled = !hasDoc;
         els.btnUndo.disabled = state.history.length === 0;
         els.btnRedo.disabled = state.future.length === 0;
@@ -793,14 +869,20 @@
         const slide = selectedSlide();
         if (!slide) return;
         const mode = styleTargetMode();
-        const target = getOrCreateTargetElement(slide, mode);
+        const targets = mode === "body" ? bodyTargets(slide) : [getOrCreateTargetElement(slide, mode)];
+        if (!targets.length) return;
         commit(`Apply style: ${mode}`);
 
-        target.style.fontSize = `${clampSize(els.styleFontSize.value)}px`;
-        target.style.fontWeight = els.styleFontWeight.value || "700";
-        target.style.textAlign = els.styleTextAlign.value || "left";
+        const fontFamily = els.styleFontFamily.value || "";
         const hex = normalizeHexColor(els.styleColorHex.value || els.styleColor.value);
-        target.style.color = hex;
+        targets.forEach((target) => {
+          target.style.fontSize = `${clampSize(els.styleFontSize.value)}px`;
+          target.style.fontWeight = els.styleFontWeight.value || "700";
+          target.style.textAlign = els.styleTextAlign.value || "left";
+          if (fontFamily) target.style.fontFamily = fontFamily;
+          else target.style.removeProperty("font-family");
+          target.style.color = hex;
+        });
         els.styleColor.value = hex;
         els.styleColorHex.value = hex;
         render();
@@ -810,14 +892,18 @@
         const slide = selectedSlide();
         if (!slide) return;
         const mode = styleTargetMode();
-        const target = findTargetElement(slide, mode);
-        if (!target) return;
+        const targets = mode === "body" ? bodyTargets(slide) : [findTargetElement(slide, mode)];
+        const validTargets = targets.filter(Boolean);
+        if (!validTargets.length) return;
         commit(`Reset style: ${mode}`);
-        target.style.removeProperty("font-size");
-        target.style.removeProperty("font-weight");
-        target.style.removeProperty("text-align");
-        target.style.removeProperty("color");
-        if (!target.getAttribute("style")) target.removeAttribute("style");
+        validTargets.forEach((target) => {
+          target.style.removeProperty("font-size");
+          target.style.removeProperty("font-family");
+          target.style.removeProperty("font-weight");
+          target.style.removeProperty("text-align");
+          target.style.removeProperty("color");
+          if (!target.getAttribute("style")) target.removeAttribute("style");
+        });
         render();
       }
 
@@ -979,7 +1065,23 @@
         loadHtml(html);
       }
 
+      function openStep3Page() {
+        if (!state.doc) return;
+        const html = docToHtml(state.doc);
+        if (!String(html).trim()) return;
+        try {
+          localStorage.setItem("STEP3_INPUT_HTML", html);
+          localStorage.setItem(STORAGE_KEY, html);
+          window.location.href = "/step3.html";
+        } catch (_) {
+          alert("Failed to open Step3 page.");
+        }
+      }
+
       els.btnLoadStorage.addEventListener("click", loadFromStorage);
+      els.btnOpenStep3.addEventListener("click", openStep3Page);
+      els.btnToggleLeftSidebar.addEventListener("click", toggleLeftSidebar);
+      els.btnToggleRightSidebar.addEventListener("click", toggleRightSidebar);
       els.btnDownload.addEventListener("click", downloadEdited);
       els.btnUndo.addEventListener("click", undo);
       els.btnRedo.addEventListener("click", redo);
@@ -1030,10 +1132,12 @@
       });
 
       try {
+        applySidebarLayout();
         const html = localStorage.getItem(STORAGE_KEY) || "";
         if (html.trim()) loadHtml(html);
         else render();
       } catch (_) {
+        applySidebarLayout();
         render();
       }
     </script>
