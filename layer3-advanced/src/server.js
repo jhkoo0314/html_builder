@@ -5,6 +5,7 @@ const express = require("express");
 const { getEnv } = require("./config/env");
 const { router } = require("./api/routes/generate-llm");
 const { router: l3Router } = require("./api/routes/l3");
+const { router: promptFlowRouter } = require("./api/routes/promptFlow");
 
 const app = express();
 const env = getEnv();
@@ -13,6 +14,7 @@ const startedAt = new Date().toISOString();
 app.use(express.json({ limit: "1mb" }));
 app.use("/api", router);
 app.use("/api", l3Router);
+app.use("/api", promptFlowRouter);
 app.use(express.static(path.join(process.cwd(), "public")));
 
 function evaluateReadiness() {

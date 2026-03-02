@@ -120,7 +120,8 @@
             </select>
           </div>
           <div class="actions">
-            <button id="btnDirect" class="btn-primary" type="button">Run Direct Build</button>
+            <button id="btnRunBuild" class="btn-primary" type="button">Run Build</button>
+            <button id="btnStepBuild" class="btn-secondary" type="button">Step Build</button>
             <a id="downloadDeck" class="btn btn-secondary" href="#" download="layer3-deck.html">Download HTML</a>
             <button id="editStep2" class="btn btn-secondary" type="button" disabled>Open Step2-A Editor</button>
           </div>
@@ -139,7 +140,8 @@
     <script>
       const state = { blobUrl: "", progressTimer: null, startedAt: 0 };
       const els = {
-        btnDirect: document.getElementById("btnDirect"),
+        btnRunBuild: document.getElementById("btnRunBuild"),
+        btnStepBuild: document.getElementById("btnStepBuild"),
         downloadDeck: document.getElementById("downloadDeck"),
         editStep2: document.getElementById("editStep2"),
         directFiles: document.getElementById("directFiles"),
@@ -176,7 +178,8 @@
       }
 
       function setBusy(flag) {
-        els.btnDirect.disabled = flag;
+        els.btnRunBuild.disabled = flag;
+        els.btnStepBuild.disabled = flag;
       }
 
       function startProgress() {
@@ -305,13 +308,47 @@
         window.open("/editor.html", "_blank");
       }
 
-      async function runDirect() {
-        resetOutput();
-        els.logs.innerHTML = "";
-        log("Direct build started");
-
+      function getInputs() {
         const files = els.directFiles.files;
         const pastedText = (els.sourceText.value || "").trim();
+        const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
+        return { files, pastedText, payloadCount };
+      }
+
+      function createStepBuildForm(files, pastedText) {
+        const form = new FormData();
+        for (const f of files) form.append("documents", f);
+        if (pastedText) {
+          form.append(
+            "documents",
+            new Blob([pastedText], { type: "text/plain;charset=utf-8" }),
+            "pasted-input.txt"
+          );
+        }
+        form.append("styleMode", els.styleMode.value || "normal");
+        form.append("toneMode", els.toneMode.value || "auto");
+        return form;
+      }
+
+      function createRunBuildForm(files, pastedText) {
+        const form = new FormData();
+        for (const f of files) form.append("documents", f);
+        if (pastedText) {
+          form.append(
+            "documents",
+            new Blob([pastedText], { type: "text/plain;charset=utf-8" }),
+            "pasted-input.txt"
+          );
+        }
+        return form;
+      }
+
+      async function runStepBuild() {
+        resetOutput();
+        els.logs.innerHTML = "";
+        log("Step build started");
+
+        const { files, pastedText, payloadCount } = getInputs();
         if ((!files || files.length === 0) && !pastedText) {
           els.error.textContent = "Select files or paste text first.";
           return;
@@ -321,19 +358,7 @@
         startProgress();
 
         try {
-          const form = new FormData();
-          for (const f of files) form.append("documents", f);
-          if (pastedText) {
-            form.append(
-              "documents",
-              new Blob([pastedText], { type: "text/plain;charset=utf-8" }),
-              "pasted-input.txt"
-            );
-          }
-          form.append("styleMode", els.styleMode.value || "normal");
-          form.append("toneMode", els.toneMode.value || "auto");
-
-          const payloadCount = (files ? files.length : 0) + (pastedText ? 1 : 0);
+          const form = createStepBuildForm(files, pastedText);
           log(`Uploading ${payloadCount} input(s)`);
           log("Calling /api/l3/build-direct");
 
@@ -341,20 +366,20 @@
           let json = await res.json().catch(() => ({}));
 
           if (res.status === 501) {
-            log("build-direct not implemented, fallback to /api/generate-llm");
-            showWarningChip("build-direct not implemented: fallback to generate-llm");
+            log("/api/l3/build-direct not implemented, fallback to /api/generate-llm");
+            showWarningChip("/api/l3/build-direct not implemented: fallback to generate-llm");
             res = await fetch("/api/generate-llm", { method: "POST", body: form });
             json = await res.json().catch(() => ({}));
           }
 
-          if (!res.ok) throw new Error(json.message || json.error || "Direct build failed");
+          if (!res.ok) throw new Error(json.message || json.error || "Step build failed");
 
           const html = json.html || "";
           if (!html) throw new Error("No html in response.");
 
           setPreviewHtml(html);
           renderChips([
-            "mode: direct",
+            "mode: step",
             `style: ${els.styleMode.value || "normal"}`,
             `tone: ${els.toneMode.value || "auto"}`,
             `inputs: ${payloadCount}`,
@@ -364,7 +389,7 @@
           const variant = (json.htmlVariants && json.htmlVariants[0]) || {};
           renderMeta({
             runId: json.runId || variant.runId || null,
-            mode: "direct",
+            mode: json.mode || "step",
             status: (variant.meta && variant.meta.status) || json.status || "PASS-DESIGN",
             styleMode: (variant.meta && variant.meta.styleMode) || json.styleMode || (els.styleMode.value || "normal"),
             toneMode: (variant.meta && variant.meta.toneMode) || json.toneMode || (els.toneMode.value || "auto"),
@@ -376,17 +401,82 @@
           });
 
           log(`API response received in ${Math.floor(elapsedMs() / 1000)}s`);
-          log("Direct build completed");
+          log("Step build completed");
         } catch (e) {
           els.error.textContent = e.message;
-          log(`Direct build failed: ${e.message}`);
+          log(`Step build failed: ${e.message}`);
         } finally {
           setBusy(false);
           stopProgress();
         }
       }
 
-      els.btnDirect.addEventListener("click", runDirect);
+      async function runRunBuild() {
+        resetOutput();
+        els.logs.innerHTML = "";
+        log("Run build started");
+        log("Run build uses direct final generation (style/tone disabled)");
+
+        const { files, pastedText, payloadCount } = getInputs();
+        if ((!files || files.length === 0) && !pastedText) {
+          els.error.textContent = "Select files or paste text first.";
+          return;
+        }
+
+        setBusy(true);
+        startProgress();
+
+        try {
+          const form = createRunBuildForm(files, pastedText);
+          log(`Uploading ${payloadCount} input(s)`);
+          log("Calling /api/l3/build-from-run");
+          const res = await fetch("/api/l3/build-from-run", { method: "POST", body: form });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.message || json.error || "Run build failed");
+
+          const html = json.html || "";
+          if (!html.trim()) throw new Error("Run build returned empty html.");
+          setPreviewHtml(html);
+
+          const variant = (json.htmlVariants && json.htmlVariants[0]) || {};
+          const theme = json.theme || (variant.meta && variant.meta.theme) || null;
+          renderChips([
+            "mode: run",
+            "style: off",
+            "tone: off",
+            `inputs: ${payloadCount}`,
+            theme && theme.key ? `theme: ${theme.key}` : "theme: N/A",
+            pastedText ? "text: pasted" : "text: none",
+          ]);
+          renderMeta({
+            runId: json.runId || variant.runId || null,
+            mode: "run",
+            status: (variant.meta && variant.meta.status) || json.status || "PASS-DESIGN",
+            styleMode: "off",
+            toneMode: "off",
+            creativeMode: false,
+            slideCount: variant.meta && variant.meta.slideCount,
+            timings: (variant.meta && variant.meta.timings) || {},
+            whyFallback: variant.whyFallback || json.whyFallback || null,
+            error: null,
+          });
+
+          log(`API response received in ${Math.floor(elapsedMs() / 1000)}s`);
+          if (theme && theme.key) {
+            log(`Theme selected: ${theme.key} (${theme.label || "unknown"})`);
+          }
+          log("Run build completed");
+        } catch (e) {
+          els.error.textContent = e.message;
+          log(`Run build failed: ${e.message}`);
+        } finally {
+          setBusy(false);
+          stopProgress();
+        }
+      }
+
+      els.btnRunBuild.addEventListener("click", runRunBuild);
+      els.btnStepBuild.addEventListener("click", runStepBuild);
       els.editStep2.addEventListener("click", openStep2Editor);
       els.step2HtmlFile.addEventListener("change", updateStep2ButtonState);
       updateStep2ButtonState();

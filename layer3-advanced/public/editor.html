@@ -171,7 +171,6 @@
       <div class="right">
         <button id="btnToggleLeftSidebar" type="button">Hide Left</button>
         <button id="btnToggleRightSidebar" type="button">Hide Right</button>
-        <button id="btnOpenStep3" type="button" disabled>Open Step3</button>
         <input id="fileInput" type="file" accept=".html,text/html" />
         <button id="btnLoadStorage">Load Step1</button>
         <button id="btnUndo" disabled>Undo</button>
@@ -328,7 +327,6 @@
       const els = {
         layout: document.getElementById("layout"),
         fileInput: document.getElementById("fileInput"),
-        btnOpenStep3: document.getElementById("btnOpenStep3"),
         btnToggleLeftSidebar: document.getElementById("btnToggleLeftSidebar"),
         btnToggleRightSidebar: document.getElementById("btnToggleRightSidebar"),
         btnLoadStorage: document.getElementById("btnLoadStorage"),
@@ -419,6 +417,13 @@
 
       function textOf(el) {
         return (el ? el.textContent : "").replace(/\s+/g, " ").trim();
+      }
+
+      function hasRenderableContent(node) {
+        if (!node) return false;
+        const text = textOf(node);
+        if (text.length > 0) return true;
+        return Boolean(node.querySelector("img,svg,canvas,video,iframe,table,pre,code"));
       }
 
       function styleTargetMode() {
@@ -663,7 +668,6 @@
         const slides = hasDoc ? getSlides(state.doc) : [];
         const hasSlides = slides.length > 0;
 
-        els.btnOpenStep3.disabled = !hasDoc;
         els.btnDownload.disabled = !hasDoc;
         els.btnUndo.disabled = state.history.length === 0;
         els.btnRedo.disabled = state.future.length === 0;
@@ -708,13 +712,19 @@
 
         const selected = Math.max(0, Math.min(state.selected, slides.length - 1));
         const selectedSlide = slides[selected].cloneNode(true);
+        if (!hasRenderableContent(selectedSlide)) {
+          return docToHtml(clone);
+        }
+        selectedSlide.setAttribute("data-step2-selected", "1");
 
         const previewDoc = document.implementation.createHTMLDocument("Step2 Preview");
         previewDoc.documentElement.lang = "en";
 
-        clone.querySelectorAll("head style, head link[rel='stylesheet']").forEach((node) => {
-          previewDoc.head.appendChild(node.cloneNode(true));
-        });
+        if (clone.head) {
+          Array.from(clone.head.children).forEach((node) => {
+            previewDoc.head.appendChild(node.cloneNode(true));
+          });
+        }
 
         const style = previewDoc.createElement("style");
         style.textContent = `
@@ -746,12 +756,31 @@
             inset: auto !important;
             filter: none !important;
           }
+          .step2-preview-root [data-step2-selected="1"] {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+          }
           .step2-preview-root * {
             animation: none !important;
             transition: none !important;
           }
           .step2-preview-root [style*="position: fixed"] {
             position: absolute !important;
+          }
+          /* Make JS-driven reveal content visible in editor preview. */
+          .step2-preview-root .gs-reveal,
+          .step2-preview-root .reveal,
+          .step2-preview-root .aos-init,
+          .step2-preview-root [data-aos],
+          .step2-preview-root [class*="reveal-"],
+          .step2-preview-root [class^="reveal-"] {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: none !important;
+            filter: none !important;
+            animation: none !important;
+            transition: none !important;
           }
         `;
         previewDoc.head.appendChild(style);
@@ -1065,21 +1094,7 @@
         loadHtml(html);
       }
 
-      function openStep3Page() {
-        if (!state.doc) return;
-        const html = docToHtml(state.doc);
-        if (!String(html).trim()) return;
-        try {
-          localStorage.setItem("STEP3_INPUT_HTML", html);
-          localStorage.setItem(STORAGE_KEY, html);
-          window.location.href = "/step3.html";
-        } catch (_) {
-          alert("Failed to open Step3 page.");
-        }
-      }
-
       els.btnLoadStorage.addEventListener("click", loadFromStorage);
-      els.btnOpenStep3.addEventListener("click", openStep3Page);
       els.btnToggleLeftSidebar.addEventListener("click", toggleLeftSidebar);
       els.btnToggleRightSidebar.addEventListener("click", toggleRightSidebar);
       els.btnDownload.addEventListener("click", downloadEdited);

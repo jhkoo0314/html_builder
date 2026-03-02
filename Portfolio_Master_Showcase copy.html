@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Architect Portfolio | 구재현</title>
+    <!-- Google Fonts: Inter & Pretendard -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* [Theme B] Enterprise Swiss v2.0 - Core Tokens */
+        :root {
+            --bg-base: #FFFFFF;
+            --bg-sub: #F8FAFC;
+            --text-main: #020617; /* Deep Midnight */
+            --text-muted: #475569; /* Slate 600 */
+            --accent: #059669; /* Emerald 600 */
+            --accent-bright: #10B981; /* Vibrant Emerald */
+            --border-strict: #020617;
+            --border-light: #E2E8F0;
+            --font-main: 'Pretendard', 'Inter', sans-serif;
+            --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+
+        body, html {
+            width: 100vw; height: 100vh; overflow: hidden;
+            font-family: var(--font-main); background-color: var(--bg-base);
+            color: var(--text-main); -webkit-font-smoothing: antialiased;
+        }
+
+        #presentation {
+            position: relative; width: 100vw; height: 100vh;
+        }
+
+        .slide {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 4rem 8vw; opacity: 0; visibility: hidden; z-index: 1;
+            background-color: var(--bg-base);
+        }
+
+        .slide.active { opacity: 1; visibility: visible; z-index: 10; }
+
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; }
+
+        /* Typography */
+        h1 { font-size: 3.8rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 2rem; border-left: 15px solid var(--accent); padding-left: 2rem; }
+        h2 { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 2.5rem; border-bottom: 2px solid var(--border-strict); padding-bottom: 1rem; display: inline-block; min-width: 450px; }
+        h3 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1.2rem; color: var(--text-main); }
+        h4 { font-size: 1.1rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+        
+        .subtitle { font-size: 1.5rem; color: var(--text-muted); font-weight: 400; margin-bottom: 3.5rem; line-height: 1.5; }
+        .meta { font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 1.2rem; display: block; }
+
+        /* Grid System */
+        .grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2.5rem; width: 100%; }
+        .col-4 { grid-column: span 4; }
+        .col-5 { grid-column: span 5; }
+        .col-6 { grid-column: span 6; }
+        .col-7 { grid-column: span 7; }
+        .col-8 { grid-column: span 8; }
+        .col-12 { grid-column: span 12; }
+
+        /* Data Components */
+        .data-block { 
+            background: #FFF; border: 1px solid var(--border-light); border-top: 6px solid var(--border-strict);
+            padding: 2.5rem; box-shadow: var(--card-shadow); height: 100%;
+        }
+        .data-block.accent { border-top-color: var(--accent); }
+        .data-block.risk { border-top-color: #EF4444; }
+        
+        ul.swiss-list { list-style: none; margin-top: 1rem; }
+        ul.swiss-list li { 
+            padding: 1.2rem 0; border-bottom: 1px solid var(--border-light); 
+            font-size: 1.05rem; color: var(--text-muted); display: flex; align-items: flex-start; gap: 1.5rem; 
+        }
+        ul.swiss-list li:last-child { border-bottom: none; }
+        ul.swiss-list li i { color: var(--accent); flex-shrink: 0; margin-top: 0.25rem; width: 18px; }
+        ul.swiss-list li strong { color: var(--text-main); font-weight: 700; width: 160px; flex-shrink: 0; display: inline-block; line-height: 1.4; }
+        ul.swiss-list li span { flex: 1; line-height: 1.4; }
+
+        .metric-badge { 
+            display: inline-block; padding: 0.3rem 0.8rem; background: var(--text-main); color: #FFF; 
+            font-size: 0.8rem; font-weight: 700; margin-bottom: 1rem; letter-spacing: 0.05em; 
+        }
+
+        /* Navigation Footer */
+        .footer { 
+            position: absolute; bottom: 0; left: 0; width: 100%; padding: 2rem 5vw; 
+            display: flex; justify-content: space-between; align-items: center; 
+            border-top: 1px solid var(--border-light); background: #FFF; z-index: 100; 
+        }
+        .page-info { display: flex; align-items: center; gap: 2rem; }
+        .page-num { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 1rem; color: var(--text-main); }
+        .project-tag { font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+        
+        .nav-btns { display: flex; gap: 2.5rem; }
+        .nav-btn { 
+            background: none; border: none; font-family: 'Inter', sans-serif; font-weight: 800; 
+            font-size: 0.85rem; letter-spacing: 0.15em; cursor: pointer; text-transform: uppercase; 
+            display: flex; align-items: center; gap: 0.6rem; color: var(--text-main); transition: color 0.2s;
+        }
+        .nav-btn:hover:not(:disabled) { color: var(--accent); }
+        .nav-btn:disabled { color: var(--border-light); cursor: not-allowed; }
+
+        /* Charts */
+        .chart-wrapper { width: 100%; height: 350px; position: relative; margin-top: 1rem; }
+
+        /* Animation */
+        .gs-reveal { opacity: 0; }
+    </style>
+</head>
+<body>
+
+<div id="presentation">
+    <!-- Slide 01: Main -->
+    <section class="slide active">
+        <div class="container gs-reveal">
+            <span class="meta">Business Architect Portfolio</span>
+            <h1>현장에서 설계하고,<br>시스템으로 안착시키는<br><span style="color:var(--accent);">비즈니스 아키텍트.</span></h1>
+            <div class="subtitle">영업 전문성과 기술 리터러시를 결합한 고효율 운영 체계의 구축</div>
+            <div style="margin-top: 5rem; display: flex; gap: 4rem;">
+                <div>
+                    <h4 style="color:var(--text-main);">GU JAE HYEUN</h4>
+                    <p class="text-muted">Strategy & Operations / SFE Specialist</p>
+                </div>
+                <div style="border-left: 2px solid var(--border-strict); padding-left: 2rem;">
+                    <p class="text-muted" style="max-width: 400px; font-size: 0.95rem;">"아이디어는 이미 프로토타입으로 작동을 완료했습니다. 이제 비즈니스의 안착(Landing)을 목표합니다."</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 02: Core Value -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Value Proposition</span>
+            <h2>검증된 현장 감각과 설계자의 정교함.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <i data-lucide="users" style="width:32px; height:32px; color:var(--accent); margin-bottom:1.5rem;"></i>
+                        <h3>현장 통찰력</h3>
+                        <p class="text-muted">영업 현장에서의 실전 경험을 바탕으로, 사원들이 직면한 페인포인트를 정확히 읽어내고 실행 가능한 전략을 도출합니다.</p>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <i data-lucide="layers" style="width:32px; height:32px; color:var(--accent); margin-bottom:1.5rem;"></i>
+                        <h3>상위 기획 역량</h3>
+                        <p class="text-muted">개별 활동을 전사 목표와 연결하는 데이터 아키텍처를 설계하고, 지속 가능한 운영 규칙(Rule)을 정의합니다.</p>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <i data-lucide="cpu" style="width:32px; height:32px; color:var(--accent); margin-bottom:1.5rem;"></i>
+                        <h3>고효율 구현력</h3>
+                        <p class="text-muted">최신 AI 및 생산성 도구를 자유자재로 다뤄, 기획의 산출물을 수작업 없이 실시간 작동하는 시스템으로 전환합니다.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 03: Overview -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project Portfolio</span>
+            <h2>전사 운영 고도화를 위한 5대 핵심 자산.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-12">
+                    <div class="data-block" style="border-top:none; background:var(--bg-sub); padding:3rem;">
+                        <ul class="swiss-list" style="margin-top:0;">
+                            <li><strong>CRM Renewal</strong> <span>영업 행동 유도 및 데이터 자산화의 기반 시스템</span></li>
+                            <li><strong>SFE Sandbox</strong> <span>실적분석 대시보드 및 리포팅 자동화 파이프라인</span></li>
+                            <li><strong>HTML Builder</strong> <span>비즈니스 산출물의 초고속 자동 생산 엔진</span></li>
+                            <li><strong>BIDIX</strong> <span>부동산 경매 시뮬레이션 및 권리 분석 플랫폼 (독립 구축)</span></li>
+                            <li><strong>BIDIX Crawler</strong> <span>시장 데이터의 실시간 공급 및 파이프라인 자동화</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 04: CRM 1 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 01. CRM Renewal</span>
+            <h2>영업 루틴의 혁신: 행동 유도 체계.</h2>
+            <div class="grid-12">
+                <div class="col-12 gs-reveal">
+                    <h3>"입력하는 도구에서 행동하는 도구로."</h3>
+                    <p class="subtitle" style="font-size:1.1rem; margin-bottom:1rem;">영업 사원의 피로도를 대폭 낮추고, 데이터 입력을 비즈니스 자산으로 전환하는 사용자 중심 설계.</p>
+                </div>
+                <div class="col-6 gs-reveal">
+                    <div class="data-block accent">
+                        <h4>Key Focus</h4>
+                        <ul class="swiss-list">
+                            <li><i data-lucide="check"></i><strong>동선 최적화</strong> <span>기존 5단계 입력 프로세스를 2단계로 축소</span></li>
+                            <li><i data-lucide="check"></i><strong>자동 맵핑</strong> <span>현장 활동 정보와 Lab 데이터 실시간 연동</span></li>
+                            <li><i data-lucide="check"></i><strong>Next Action</strong> <span>데이터 기반의 다음 방문 목적지 추천</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-6 gs-reveal">
+                    <div class="data-block">
+                        <div class="chart-wrapper" style="height:250px; margin-top:0;">
+                            <canvas id="chartCRM"></canvas>
+                        </div>
+                        <p class="text-muted" style="font-size:0.85rem; margin-top:1rem; text-align:center;">도입 전후 입력 부하 및 데이터 활용도 변화(%)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 05: CRM 2 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 01. CRM Renewal</span>
+            <h2>신뢰 기반의 무결성 보고 체계.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-8">
+                    <div class="data-block">
+                        <i data-lucide="shield-check" style="width:24px; color:var(--accent); margin-bottom:1rem;"></i>
+                        <h3>데이터 무결성(Integrity) 확보 정책</h3>
+                        <p class="text-muted" style="margin-bottom:1.5rem;">수기 오류와 임의 조작이 불가능한 시스템적 방벽을 구축하여 경영진의 의사결정 신뢰도를 확보했습니다.</p>
+                        <ul class="swiss-list">
+                            <li><strong>교차 검증</strong> <span>활동 로그와 처방 실적 데이터의 인과관계 자동 분석</span></li>
+                            <li><strong>Ledger 정책</strong> <span>모든 실적 변경 사항의 이력을 보존하는 원장 구조</span></li>
+                            <li><strong>Clean Data</strong> <span>불명확한 코드의 유입을 차단하는 Ingestion 게이트</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block risk">
+                        <h3>Risk Control</h3>
+                        <p class="text-muted">"데이터 오염은 잘못된 전략을 낳습니다. 시스템이 스스로 정합성을 검증하도록 설계했습니다."</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 06: SFE Sandbox 1 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 02. SFE Sandbox</span>
+            <h2 style="margin-bottom:1.5rem;">데이터 기반 실적분석의 표준: SFE 샌드박스.</h2>
+            <div class="grid-12">
+                <div class="col-12 gs-reveal">
+                    <h3 style="margin-bottom:0.5rem;">성과 조망과 의사결정의 가속화.</h3>
+                    <p class="subtitle" style="font-size:1.1rem; margin-bottom:1.5rem;">데이터 소스의 잦은 변동에도 흔들리지 않는 표준 파이프라인을 구축하여, 실시간 실적 대시보드와 자동화된 심층 리포트를 제공합니다.</p>
+                </div>
+                <div class="col-5 gs-reveal">
+                    <div class="data-block" style="border-top-color:var(--text-muted); padding:1.5rem;">
+                        <div class="chart-wrapper" style="height:280px; margin-top:0;">
+                            <canvas id="chartSFE"></canvas>
+                        </div>
+                        <p class="text-muted" style="font-size:0.85rem; margin-top:0.8rem; text-align:center;">다차원 실적 분석 레이아웃 (Radar Model)</p>
+                    </div>
+                </div>
+                <div class="col-7 gs-reveal">
+                    <div class="data-block accent" style="padding:1.5rem;">
+                        <ul class="swiss-list" style="margin-top:0;">
+                            <li style="padding:0.8rem 0;"><i data-lucide="shield-check"></i><strong>Fail-Fast Gate</strong> <span style="word-break:keep-all;">조인 품질 및 데이터 그레인 즉각 검증으로 무결성 보장</span></li>
+                            <li style="padding:0.8rem 0;"><i data-lucide="git-merge"></i><strong>Safe Pipeline</strong> <span style="word-break:keep-all;">설정(Config) 기반 매핑으로 데이터 소스 변경에 유연한 대응</span></li>
+                            <li style="padding:0.8rem 0;"><i data-lucide="layout"></i><strong>Visual Dashboard</strong> <span style="word-break:keep-all;">Streamlit 기반의 직관적인 실적 모니터링 컨트롤 타워</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 07: SFE Sandbox 2 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 02. SFE Sandbox</span>
+            <h2>설정 중심의 워크플로우 및 자동 리포팅.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-12">
+                    <div class="data-block" style="border-top-color:var(--accent);">
+                        <h3>데이터 수집부터 고품질 HTML 산출물까지의 자동화</h3>
+                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:2rem; margin-top:2rem;">
+                            <div style="border-left:4px solid var(--accent); padding-left:1.5rem;">
+                                <h4 style="color:var(--text-main);">01. Ingestion</h4>
+                                <p class="text-muted" style="font-size:0.9rem;">소스 파일 업로드 시 표준 매핑 및 신뢰도 검증 실시간 완료</p>
+                            </div>
+                            <div style="border-left:4px solid var(--accent); padding-left:1.5rem;">
+                                <h4 style="color:var(--text-main);">02. Analytics</h4>
+                                <p class="text-muted" style="font-size:0.9rem;">전략 시나리오(월간/분기 등)별 지표 산출 엔진 자동 구동</p>
+                            </div>
+                            <div style="border-left:4px solid var(--accent); padding-left:1.5rem;">
+                                <h4 style="color:var(--text-main);">03. Delivery</h4>
+                                <p class="text-muted" style="font-size:0.9rem;">분석 인사이트가 집약된 고해상도 HTML 리포트 즉시 생성</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 08: HTML Builder 1 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 03. HTML Builder</span>
+            <h2>기획 생산성 혁명: 산출물 자동화.</h2>
+            <div class="grid-12">
+                <div class="col-12 gs-reveal">
+                    <h3>"전략 수립 본연의 시간에 90% 집중."</h3>
+                    <p class="subtitle" style="font-size:1.1rem; margin-bottom:1rem;">데이터를 가공하고 문서를 예쁘게 만드는 '노동'을 시스템화하여, 기획자가 인사이트 도출에만 몰입하는 환경을 구축했습니다.</p>
+                </div>
+                <div class="col-7 gs-reveal">
+                    <div class="data-block accent">
+                        <ul class="swiss-list" style="margin-top:0;">
+                            <li><i data-lucide="cpu"></i><strong>Zero Operation</strong> <span>데이터 소스 연결 시 즉시 비즈니스 웹 슬라이드 생성</span></li>
+                            <li><i data-lucide="layout"></i><strong>Standardization</strong> <span>보고 방식의 표준화로 조직 내 커뮤니케이션 코스트 절감</span></li>
+                            <li><i data-lucide="refresh-cw"></i><strong>Real-time Update</strong> <span>변화하는 시장 데이터를 즉시 반영한 가변적 대시보드</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-5 gs-reveal">
+                    <div class="data-block" style="border-top-color:var(--text-muted); background:var(--bg-sub); font-family:'Inter', sans-serif;">
+                        <h4 style="color:var(--text-muted);">Process Efficiency</h4>
+                        <div style="margin-top:2rem;">
+                            <p style="font-size:0.85rem; font-weight:800; margin-bottom:0.5rem;">AS-IS (Manual)</p>
+                            <div style="height:20px; width:100%; background:#E2E8F0; margin-bottom:1.5rem;">
+                                <div style="height:100%; width:90%; background:var(--text-muted);"></div>
+                            </div>
+                            <p style="font-size:0.85rem; font-weight:800; margin-bottom:0.5rem;">TO-BE (Automated)</p>
+                            <div style="height:20px; width:100%; background:#E2E8F0;">
+                                <div style="height:100%; width:8%; background:var(--accent);"></div>
+                            </div>
+                            <p class="text-muted" style="font-size:0.8rem; margin-top:1rem;">* 데이터 가공 및 시각화 소요 시간 비교</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 09: HTML Builder 2 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 03. HTML Builder</span>
+            <h2>고품질 딜리버러블의 즉각적 자산화.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <h3>Speed</h3>
+                        <p class="text-muted">수일이 걸리던 종합 분석 보고서 제작을 단 수 분 내로 단축하여 의사결정 속도를 비약적으로 향상시켰습니다.</p>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <h3>Consistency</h3>
+                        <p class="text-muted">규격화된 디자인 톤과 레이아웃을 제공하여, 조직 전체 산출물의 수준(Quality)을 상향 평준화했습니다.</p>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <h3>Accessibility</h3>
+                        <p class="text-muted">웹 네이티브 포맷으로 별도의 뷰어 없이 언제 어디서나 고해상도 대시보드 접근이 가능합니다.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 10: BIDIX 1 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 04. BIDIX Platform</span>
+            <h2>판단 근거의 구조화: 경매 시뮬레이션.</h2>
+            <div class="grid-12">
+                <div class="col-6 gs-reveal">
+                    <div class="data-block accent">
+                        <h3>부동산 경매 리스크의 시스템적 해석</h3>
+                        <p class="text-muted" style="margin-top:1rem; line-height:1.7;">복잡하게 얽힌 권리 관계와 수익성 분석 로직을 누구나 명확히 판단할 수 있는 시뮬레이션 엔진으로 구현했습니다.</p>
+                        <ul class="swiss-list" style="margin-top:1.5rem;">
+                            <li><strong>권리 분석 엔진</strong> <span>인수/말소 권리의 우선순위 자동 판별 로직</span></li>
+                            <li><strong>수익성 시뮬레이션</strong> <span>비용, 세금, 매각가에 따른 시나리오별 수익 산출</span></li>
+                            <li><strong>리스크 가시화</strong> <span>낙찰 후 발생 가능한 잠재적 비용의 수치화</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-6 gs-reveal">
+                    <div style="background:var(--text-main); color:#FFF; padding:2.5rem; font-family:'Courier New', monospace; font-size:1rem; box-shadow:var(--card-shadow); border-left:8px solid var(--accent);">
+                        <span style="color:var(--accent);"># BIDIX Simulation Core Logic</span><br><br>
+                        class AuctionEngine:<br>
+                        &nbsp;&nbsp;def run_sim(self, data):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;rights = analyze_priority(data)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;roi = calc_future_value(rights)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;return generate_report(roi)<br><br>
+                        <span style="color:#666;">// 도메인 지식을 함수로 구현하여<br>// 주관적 판단의 오류를 차단함</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 11: BIDIX 2 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 04. BIDIX Platform</span>
+            <h2>1인 체제 완결성: 기획에서 배포까지.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-12">
+                    <div class="data-block" style="border-top-color:var(--accent);">
+                        <h3>아키텍팅 역량의 실체적 증명</h3>
+                        <p class="text-muted" style="margin-bottom:2.5rem;">제한된 자원 속에서 부동산 도메인의 복잡성을 구조화하고, 실제 서비스 가능한 수준의 결과물을 홀로 구축하며 실행력을 입증했습니다.</p>
+                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1.5rem;">
+                            <div style="padding:1rem; background:var(--bg-sub);">
+                                <h4 style="color:var(--text-main);">01. 기획(PRD)</h4>
+                                <p style="font-size:0.85rem;">투자자 페인포인트 분석 및 핵심 분석 시나리오 도출</p>
+                            </div>
+                            <div style="padding:1rem; background:var(--bg-sub);">
+                                <h4 style="color:var(--text-main);">02. 엔진 설계</h4>
+                                <p style="font-size:0.85rem;">경매 데이터 간의 정교한 계산 로직 및 DB 스키마 설계</p>
+                            </div>
+                            <div style="padding:1rem; background:var(--bg-sub);">
+                                <h4 style="color:var(--text-main);">03. 무결성 검증</h4>
+                                <p style="font-size:0.85rem;">계산 결과의 정확성을 담보하기 위한 기준 데이터 검증 테스트</p>
+                            </div>
+                            <div style="padding:1rem; background:var(--bg-sub);">
+                                <h4 style="color:var(--text-main);">04. 배포/운영</h4>
+                                <p style="font-size:0.85rem;">실제 배포 환경 구축 및 사용자 접근성 테스트 완료</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 12: BIDIX Crawler 1 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 05. BIDIX Crawler</span>
+            <h2>정보 공급망 자동화: 데이터 파이프라인.</h2>
+            <div class="grid-12">
+                <div class="col-12 gs-reveal">
+                    <h3>"수기 수집의 한계를 넘는 시장 정보 자산화."</h3>
+                    <p class="subtitle" style="font-size:1.1rem; margin-bottom:1rem;">물리적으로 불가능했던 수만 건의 부동산 경매 정보를 실시간으로 수집하고, 정제하여 분석 엔진의 핵심 연료로 공급합니다.</p>
+                </div>
+                <div class="col-7 gs-reveal">
+                    <div class="data-block accent">
+                        <ul class="swiss-list" style="margin-top:0;">
+                            <li><i data-lucide="database"></i><strong>Auto-Ingestion</strong> <span>관심 물건의 변동 사항 수 분 내 자동 감지 및 갱신</span></li>
+                            <li><i data-lucide="layers"></i><strong>Schema Normalization</strong> <span>파편화된 외부 정보를 분석용 표준 포맷으로 즉각 변환</span></li>
+                            <li><i data-lucide="trending-up"></i><strong>Efficiency</strong> <span>기존 수기 취합 대비 데이터 확보 속도 1,000% 향상</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-5 gs-reveal">
+                    <div class="data-block">
+                        <div class="chart-wrapper" style="height:250px; margin-top:0;">
+                            <canvas id="chartCrawler"></canvas>
+                        </div>
+                        <p class="text-muted" style="font-size:0.85rem; margin-top:1rem; text-align:center;">데이터 공급 속도 및 정보 누적 트렌드</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 13: BIDIX Crawler 2 -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Project 05. BIDIX Crawler</span>
+            <h2>정보 자산의 연속성 및 안정성 정책.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-6">
+                    <div class="data-block accent">
+                        <h3>운영 신뢰도 관리 (Observability)</h3>
+                        <p class="text-muted">정보 수집은 안정성이 핵심입니다. 시스템은 보이지 않는 곳에서 끊임없이 스스로의 건강 상태를 점검합니다.</p>
+                        <ul class="swiss-list" style="margin-top:1.5rem;">
+                            <li><strong>장애 조기 탐지</strong> <span>수집 경로의 변화나 오류를 즉시 포착하여 알람 전송</span></li>
+                            <li><strong>자기 치유(Self-healing)</strong> <span>일시적 장애 시 자동 재필(Backfill) 정책 적용</span></li>
+                            <li><strong>무결성 게이트</strong> <span>데이터의 논리적 오류 발견 시 엔진 유입 차단</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="data-block" style="border-top-color:var(--text-main);">
+                        <h3>데이터의 무기화</h3>
+                        <p class="text-muted" style="line-height:1.7;">"수집 자체는 기술이지만, 수집된 데이터를 비즈니스의 무기로 가공하는 것은 기획입니다. BIDIX Crawler는 단순한 봇이 아닌, 시장 인사이트를 실어나르는 혈전과 같습니다."</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 14: Synergy -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Business Impact</span>
+            <h2>통합 운영 체계가 만든 비즈니스 변화.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-8">
+                    <div class="chart-wrapper">
+                        <canvas id="chartImpact"></canvas>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="data-block accent">
+                        <h3>Quantified Value</h3>
+                        <ul class="swiss-list">
+                            <li><strong>의사결정 속도</strong> <span class="text-accent" style="font-weight:800;">4.5배 단축</span></li>
+                            <li><strong>데이터 산출 시간</strong> <span class="text-accent" style="font-weight:800;">-95% 감소</span></li>
+                            <li><strong>전략 달성 확률</strong> <span class="text-accent" style="font-weight:800;">+30% 향상</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 15: Capabilities -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Core Competencies</span>
+            <h2>Modern Toolkit & High-End Literacy.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-12">
+                    <div class="data-block" style="border-top-color:var(--accent);">
+                        <h3>아이디어를 '작동하는 실체'로 만드는 도구함</h3>
+                        <div style="display:flex; flex-wrap:wrap; gap:1.5rem; margin-top:2rem;">
+                            <span class="metric-badge">STRATEGIC PLANNING</span>
+                            <span class="metric-badge">AI-DRIVEN WORKFLOW</span>
+                            <span class="metric-badge">DATA ARCHITECTING</span>
+                            <span class="metric-badge">RAPID PROTOTYPING</span>
+                            <span class="metric-badge">SFE/CRM OPTIMIZATION</span>
+                        </div>
+                        <p class="text-muted" style="margin-top:2rem; font-size:1.2rem; line-height:1.6;">
+                            저는 기획안을 던져두고 기다리는 것이 아니라, 수 시간 내로 <strong style="color:var(--accent);">'작동하는 정답'</strong>을 먼저 제시하는 차세대 기획자입니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 16: Vision -->
+    <section class="slide">
+        <div class="container">
+            <span class="meta">Future Vision</span>
+            <h2>스스로 최적화되는 '자율 운영 시스템' 설계.</h2>
+            <div class="grid-12 gs-reveal">
+                <div class="col-6">
+                    <h1 style="border:none; padding:0; font-size:3rem;">기획의 끝은<br><span style="color:var(--accent);">작동하는 환경</span>입니다.</h1>
+                </div>
+                <div class="col-6">
+                    <div class="data-block accent">
+                        <p class="text-muted" style="font-size:1.15rem; line-height:1.8;">
+                            단순한 관리자를 넘어, 조직이 더 효율적이고 즐겁게 목표에 몰입할 수 있는 <strong>운영의 장(Ground)</strong>을 설계하겠습니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Slide 17: Closing -->
+    <section class="slide">
+        <div class="container gs-reveal" style="text-align:center;">
+            <span class="meta">Presentation Finished</span>
+            <h1 style="border:none; padding:0; font-size:5rem;">Landing Complete.</h1>
+            <p class="subtitle" style="margin-bottom:5rem;">작동하는 시스템으로 기획의 가치를 증명하겠습니다.</p>
+            <div style="border-top:2px solid var(--border-strict); display:inline-block; padding:2rem 4rem;">
+                <p style="font-size:1.1rem; font-weight:800; color:var(--text-main);">구재현 | Business Architect</p>
+                <p class="text-muted" style="margin-top:0.5rem;">SFE & Sales Planning Specialist</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+    <div class="page-info">
+        <div class="page-num" id="pageIndicator">01 / 17</div>
+        <div class="project-tag" id="projectTag">Identity</div>
+    </div>
+    <div class="nav-btns">
+        <button class="nav-btn" id="prevBtn" onclick="prevSlide()"><i data-lucide="chevron-left" style="width:18px;"></i> Prev</button>
+        <button class="nav-btn" id="nextBtn" onclick="nextSlide()">Next <i data-lucide="chevron-right" style="width:18px;"></i></button>
+    </div>
+</div>
+
+<script>
+    lucide.createIcons();
+
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const pageIndicator = document.getElementById('pageIndicator');
+    const projectTag = document.getElementById('projectTag');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    let isAnimating = false;
+
+    const tags = [
+        "Identity", "Value", "Architecture", 
+        "CRM.01", "CRM.02", "SFE.01", "SFE.02", 
+        "Builder.01", "Builder.02", "BIDIX.01", "BIDIX.02", 
+        "Crawler.01", "Crawler.02", "Impact", "Skills", "Vision", "Closing"
+    ];
+
+    function init() {
+        updateNav();
+        const targetSlide = slides[0];
+        const elements = targetSlide.querySelectorAll('.gs-reveal');
+        targetSlide.classList.add('active');
+        targetSlide.style.visibility = "visible";
+        targetSlide.style.opacity = 1;
+        gsap.set(elements, { opacity: 1, y: 0 });
+        
+        initCharts();
+    }
+
+    function updateNav() {
+        prevBtn.disabled = currentSlide === 0;
+        nextBtn.disabled = currentSlide === slides.length - 1;
+        pageIndicator.innerText = `${String(currentSlide + 1).padStart(2, '0')} / ${slides.length}`;
+        projectTag.innerText = tags[currentSlide] || "Portfolio";
+    }
+
+    function animateSlide(index) {
+        if (isAnimating) return;
+        isAnimating = true;
+
+        const currentActive = document.querySelector('.slide.active');
+        const targetSlide = slides[index];
+        const elements = targetSlide.querySelectorAll('.gs-reveal');
+
+        gsap.set(targetSlide, { visibility: 'visible', opacity: 0 });
+        gsap.set(elements, { opacity: 0, y: 20 });
+
+        const tl = gsap.timeline({
+            onComplete: () => {
+                isAnimating = false;
+                updateNav();
+            }
+        });
+
+        if (currentActive && currentActive !== targetSlide) {
+            tl.to(currentActive, { 
+                opacity: 0, duration: 0.25, 
+                onComplete: () => {
+                    currentActive.classList.remove('active');
+                    currentActive.style.visibility = "hidden";
+                }
+            });
+        }
+
+        tl.to(targetSlide, { opacity: 1, duration: 0.2, onStart: () => targetSlide.classList.add('active') }, "-=0.1");
+        tl.to(elements, { opacity: 1, y: 0, duration: 0.35, stagger: 0.08, ease: "power2.out" }, "-=0.1");
+    }
+
+    function nextSlide() { if (!isAnimating && currentSlide < slides.length - 1) { currentSlide++; animateSlide(currentSlide); } }
+    function prevSlide() { if (!isAnimating && currentSlide > 0) { currentSlide--; animateSlide(currentSlide); } }
+
+    function initCharts() {
+        const commonOptions = { responsive: true, maintainAspectRatio: false, animation: { duration: 800 }, plugins: { legend: { display:false } } };
+
+        // CRM Chart
+        new Chart(document.getElementById('chartCRM'), {
+            type: 'bar',
+            data: { labels: ['입력 시간', '데이터 신뢰도', '전략 활용도'], datasets: [{ data: [15, 95, 90], backgroundColor: ['#E2E8F0', '#059669', '#10B981'] }] },
+            options: commonOptions
+        });
+
+        // SFE Chart
+        new Chart(document.getElementById('chartSFE'), {
+            type: 'radar',
+            data: { 
+                labels: ['HIR', 'RTR', 'PHR', 'PV', 'NAR'],
+                datasets: [{ label: 'Target Strategy', data: [90, 85, 70, 80, 95], borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.2)' }]
+            },
+            options: { ...commonOptions, scales: { r: { beginAtZero: true, max: 100 } } }
+        });
+
+        // Crawler Chart
+        new Chart(document.getElementById('chartCrawler'), {
+            type: 'line',
+            data: { 
+                labels: ['W1', 'W2', 'W3', 'W4'], 
+                datasets: [{ data: [100, 450, 1200, 3500], borderColor: '#059669', tension: 0.4, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.05)' }] 
+            },
+            options: commonOptions
+        });
+
+        // Impact Chart
+        new Chart(document.getElementById('chartImpact'), {
+            type: 'doughnut',
+            data: { 
+                labels: ['의사결정 속도', '공정 표준화', '인사이트 확보'], 
+                datasets: [{ data: [45, 30, 25], backgroundColor: ['#020617', '#059669', '#E2E8F0'] }] 
+            },
+            options: { ...commonOptions, cutout: '70%', plugins: { legend: { display:true, position:'bottom' } } }
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+        if (e.key === 'ArrowLeft') prevSlide();
+    });
+
+    let wheelTimeout;
+    document.addEventListener('wheel', (e) => {
+        if (isAnimating) return;
+        clearTimeout(wheelTimeout);
+        wheelTimeout = setTimeout(() => {
+            if (e.deltaY > 30) nextSlide();
+            else if (e.deltaY < -30) prevSlide();
+        }, 50);
+    });
+
+    window.onload = init;
+</script>
+</body>
+</html>

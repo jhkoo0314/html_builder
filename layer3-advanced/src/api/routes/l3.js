@@ -3,10 +3,11 @@
 const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
-const path = require("path");
 const { analyzeDirect, renderDirect } = require("../../l3/twoStep");
 const { countSlides } = require("../../html/postprocess/meaningful");
 const { L3BuildError } = require("../../l3/errors");
+const { getEnv } = require("../../config/env");
+const { runWithModelFallback } = require("../../llm/gemini/client");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -24,6 +25,28 @@ const SLIDE_TYPES = [
   "option-recommendation",
   "action-plan",
 ];
+const RUN_THEME_SET = {
+  A: {
+    label: "Signature Premium",
+    designPrompt: "Theme A Signature Premium: cinematic premium mood, bold hero moments, rich gradient backdrops, elegant typographic contrast, high visual drama.",
+  },
+  B: {
+    label: "Enterprise Swiss",
+    designPrompt: "Theme B Enterprise Swiss: strict grid, strong information hierarchy, clean corporate look, restrained palette, executive report clarity.",
+  },
+  C: {
+    label: "Minimal Keynote",
+    designPrompt: "Theme C Minimal Keynote: minimalist whitespace-first composition, concise typography, calm tempo, reduced ornaments, keynote-like simplicity.",
+  },
+  D: {
+    label: "Analytical Dashboard",
+    designPrompt: "Theme D Analytical Dashboard: data-centric dashboard style, card systems, metrics-first storytelling, operational readability, analytical focus.",
+  },
+  E: {
+    label: "Deep Tech Dark",
+    designPrompt: "Theme E Deep Tech Dark: deep dark canvas, neon accents, futuristic technical mood, high contrast interfaces, advanced technology narrative.",
+  },
+};
 
 function normalizeStyleMode(value) {
   const mode = String(value || "").toLowerCase();
@@ -37,6 +60,106 @@ function normalizeToneMode(value) {
   if (mode === "light") return "light";
   if (mode === "dark") return "dark";
   return "auto";
+}
+
+function parseJsonFromText(text) {
+  const src = String(text || "").trim();
+  if (!src) return null;
+  try {
+    return JSON.parse(src);
+  } catch (_error) {
+    const start = src.indexOf("{");
+    const end = src.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(src.slice(start, end + 1));
+      } catch (_error2) {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function selectThemeByHeuristic(analysis) {
+  const text = `${analysis && analysis.docSummary ? analysis.docSummary : ""} ${(analysis && analysis.headings || []).join(" ")}`.toLowerCase();
+  const headingCount = Number(analysis && analysis.stats && analysis.stats.headingCount);
+  if (/\b(ai|tech|platform|security|architecture|infra|llm)\b/.test(text)) return "E";
+  if (/\b(kpi|metric|roi|performance|conversion|dashboard|report)\b/.test(text)) return "D";
+  if (/\b(board|executive|strategy|enterprise|b2b)\b/.test(text)) return "B";
+  if (headingCount <= 2) return "C";
+  return "A";
+}
+
+function buildThemeSelectorPrompt(analysis) {
+  const headings = Array.isArray(analysis && analysis.headings) ? analysis.headings.slice(0, 12) : [];
+  return [
+    "You are a theme selector for slide generation.",
+    "Choose exactly one theme key from: A, B, C, D, E.",
+    "Return JSON only.",
+    "Schema: {\"theme\":\"A|B|C|D|E\",\"reason\":\"string\"}",
+    "Keep reason concise and in Korean.",
+    "",
+    "Theme guide:",
+    "A Signature Premium: premium cinematic storytelling.",
+    "B Enterprise Swiss: clean corporate reporting style.",
+    "C Minimal Keynote: minimal and whitespace-first.",
+    "D Analytical Dashboard: data-heavy dashboard style.",
+    "E Deep Tech Dark: dark technical futuristic style.",
+    "",
+    "Document analysis:",
+    JSON.stringify({
+      docTitle: analysis && analysis.docTitle ? analysis.docTitle : "",
+      docSummary: analysis && analysis.docSummary ? analysis.docSummary : "",
+      headings,
+      stats: analysis && analysis.stats ? analysis.stats : {},
+    }),
+  ].join("\n");
+}
+
+async function chooseRunTheme(analysis) {
+  const env = getEnv();
+  const fallbackTheme = selectThemeByHeuristic(analysis);
+  if (!env.GEMINI_API_KEY) {
+    return {
+      key: fallbackTheme,
+      label: RUN_THEME_SET[fallbackTheme].label,
+      reason: "API key missing, heuristic theme selection used.",
+      source: "heuristic",
+      llmReasonCode: "NO_API_KEY",
+    };
+  }
+  const llmResult = await runWithModelFallback({
+    apiKey: env.GEMINI_API_KEY,
+    candidates: ["gemini-3-flash-preview", "gemini-2.5-flash"],
+    prompt: buildThemeSelectorPrompt(analysis),
+    totalBudgetMs: 45000,
+    attemptTimeoutMs: 25000,
+    minRemainingMs: 2500,
+    modelTimeoutsMs: {
+      "gemini-3-flash-preview": 20000,
+      "gemini-2.5-flash": 25000,
+    },
+  });
+  if (!llmResult.ok) {
+    return {
+      key: fallbackTheme,
+      label: RUN_THEME_SET[fallbackTheme].label,
+      reason: `LLM theme selection failed: ${llmResult.reasonCode || "LLM_ERROR"}; heuristic fallback used.`,
+      source: "heuristic-fallback",
+      llmReasonCode: llmResult.reasonCode || "LLM_ERROR",
+    };
+  }
+  const json = parseJsonFromText(llmResult.text);
+  const candidate = String(json && json.theme ? json.theme : "").toUpperCase();
+  const key = RUN_THEME_SET[candidate] ? candidate : fallbackTheme;
+  return {
+    key,
+    label: RUN_THEME_SET[key].label,
+    reason: String(json && json.reason ? json.reason : "문서 성격에 맞는 테마를 선택했습니다."),
+    source: "llm",
+    llmReasonCode: "OK",
+  };
 }
 
 function evaluateDesignQuality({ html, slideCount, navLogic, warnings }) {
@@ -130,131 +253,10 @@ function applySlideTypeAttributes(html, assignedTypes) {
   return { html: out, appliedCount: index };
 }
 
-function enforceTypeVisualContract(html) {
-  const css = `
-/* step3-type-contract: make slide types visibly distinct */
-section.slide.type-title-cover{background:linear-gradient(145deg,#0f172a,#1e293b)!important;color:#f8fafc!important;padding:64px!important}
-section.slide.type-title-cover h1,section.slide.type-title-cover h2{font-size:clamp(36px,5vw,64px)!important;letter-spacing:-.02em}
-section.slide.type-agenda{background:#f8fafc!important;border-left:14px solid #0f766e!important}
-section.slide.type-section-divider{display:grid!important;place-items:center!important;text-align:center!important;background:linear-gradient(180deg,#ecfeff,#e0f2fe)!important}
-section.slide.type-executive-summary{background:#ffffff!important;border-top:10px solid #1d4ed8!important}
-section.slide.type-problem-statement{background:#fff7ed!important;border-left:14px solid #ea580c!important}
-section.slide.type-insight{background:#f0fdf4!important;border-left:14px solid #16a34a!important}
-section.slide.type-kpi-snapshot{background:#eff6ff!important;border-left:14px solid #2563eb!important}
-section.slide.type-comparison{display:grid!important;grid-template-columns:1fr 1fr!important;gap:18px!important;background:#f8fafc!important}
-section.slide.type-process-flow{background:#f5f3ff!important;border-left:14px solid #7c3aed!important}
-section.slide.type-timeline-roadmap{background:#f0f9ff!important;border-left:14px solid #0891b2!important}
-section.slide.type-option-recommendation{background:#fafaf9!important;border-left:14px solid #0f766e!important}
-section.slide.type-action-plan{background:#ecfdf5!important;border-left:14px solid #15803d!important}
-section.slide[class*="type-"] h1,section.slide[class*="type-"] h2,section.slide[class*="type-"] h3{margin-top:0!important}
-`;
-  const src = String(html || "");
-  if (!src.trim()) return src;
-  if (/<style[^>]*id=["']step3-type-contract["']/i.test(src)) return src;
-  if (/<\/head>/i.test(src)) {
-    return src.replace(/<\/head>/i, `<style id="step3-type-contract">${css}</style></head>`);
-  }
-  return `${src}\n<style id="step3-type-contract">${css}</style>`;
-}
-
-function decodeHtmlEntities(text) {
-  return String(text || "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'");
-}
-
-function stripTags(html) {
-  return decodeHtmlEntities(String(html || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-}
-
-function firstMatch(html, re) {
-  const m = String(html || "").match(re);
-  return m ? stripTags(m[1] || "") : "";
-}
-
-function manyMatches(html, re, limit = 6) {
-  const out = [];
-  let m;
-  const source = String(html || "");
-  const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
-  while ((m = rx.exec(source)) && out.length < limit) {
-    const t = stripTags(m[1] || "");
-    if (t) out.push(t);
-  }
-  return out;
-}
-
-function htmlToStep3Outline(rawHtml, fileName) {
-  const html = String(rawHtml || "")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ");
-
-  const sectionBlocks = [];
-  const sectionRe = /<section\b([\s\S]*?)>([\s\S]*?)<\/section>/gi;
-  let m;
-  while ((m = sectionRe.exec(html))) {
-    const attrs = String(m[1] || "");
-    const body = String(m[2] || "");
-    if (!/\bslide\b/i.test(attrs)) continue;
-    const typeHint = firstMatch(attrs, /data-slide-type\s*=\s*["']([^"']+)["']/i);
-    const title = firstMatch(body, /<h[1-4][^>]*>([\s\S]*?)<\/h[1-4]>/i);
-    const bullets = manyMatches(body, /<li[^>]*>([\s\S]*?)<\/li>/gi, 5);
-    const paras = manyMatches(body, /<p[^>]*>([\s\S]*?)<\/p>/gi, 3);
-    const fallback = stripTags(body).slice(0, 220);
-    sectionBlocks.push({ typeHint, title, bullets, paras, fallback });
-  }
-
-  const blocks = sectionBlocks.length
-    ? sectionBlocks
-    : [{
-        typeHint: "",
-        title: firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i),
-        bullets: manyMatches(html, /<li[^>]*>([\s\S]*?)<\/li>/gi, 8),
-        paras: manyMatches(html, /<p[^>]*>([\s\S]*?)<\/p>/gi, 6),
-        fallback: stripTags(html).slice(0, 1200),
-      }];
-
-  const lines = [`# FILE: ${fileName}`, "STEP3_RECOMPOSE_SOURCE_OUTLINE"];
-  blocks.forEach((b, idx) => {
-    lines.push(`\n[SLIDE ${idx + 1}]`);
-    if (b.typeHint) lines.push(`TypeHint: ${b.typeHint}`);
-    if (b.title) lines.push(`Title: ${b.title}`);
-    const points = (b.bullets.length ? b.bullets : b.paras).slice(0, 5);
-    if (points.length) {
-      lines.push("KeyPoints:");
-      points.forEach((p) => lines.push(`- ${p.slice(0, 180)}`));
-    } else if (b.fallback) {
-      lines.push(`Summary: ${b.fallback}`);
-    }
-  });
-  return lines.join("\n");
-}
-
-function preprocessStep3Files(files) {
-  return (files || []).map((file) => {
-    const ext = String(path.extname(file.originalname || "")).toLowerCase();
-    if (ext !== ".html" && ext !== ".htm") return file;
-    const outline = htmlToStep3Outline(file.buffer.toString("utf8"), file.originalname || "step3-input.html");
-    return {
-      ...file,
-      originalname: `${(file.originalname || "step3-input").replace(/\.(html?|txt)$/i, "")}.txt`,
-      mimetype: "text/plain",
-      buffer: Buffer.from(outline, "utf8"),
-      size: Buffer.byteLength(outline, "utf8"),
-    };
-  });
-}
-
-router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
+async function handleBuild(req, res, buildMode) {
   try {
     const startedAt = Date.now();
-    const rawFiles = req.files || [];
-    const isStep3Recompose = String(req.body.recomposeMode || "").toLowerCase() === "step3";
-    const files = isStep3Recompose ? preprocessStep3Files(rawFiles) : rawFiles;
+    const files = req.files || [];
     if (!files.length) {
       throw new L3BuildError("INVALID_INPUT", "No documents uploaded.", 400);
     }
@@ -273,18 +275,31 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
 
     let result;
     let renderMs = 0;
+    let runTheme = null;
     try {
-      const styleMode = normalizeStyleMode(req.body.styleMode);
-      const toneMode = normalizeToneMode(req.body.toneMode);
+      const isRunMode = buildMode === "run";
+      const styleMode = isRunMode ? "creative" : normalizeStyleMode(req.body.styleMode);
+      const toneMode = isRunMode ? "auto" : normalizeToneMode(req.body.toneMode);
       const renderStart = Date.now();
-      const step3PromptPrefix = isStep3Recompose
-        ? "Step3 recompose mode: rebuild visual system from scratch; do not copy source CSS/class names/layout verbatim. Improve wording quality with concise executive phrasing while preserving facts."
+      if (isRunMode) {
+        runTheme = await chooseRunTheme(analyzed.analysis);
+      }
+      const runThemePrompt = runTheme
+        ? [
+          `Run mode theme lock: ${runTheme.key} (${runTheme.label}).`,
+          RUN_THEME_SET[runTheme.key].designPrompt,
+          `Theme rationale: ${runTheme.reason}`,
+          "Apply this theme consistently across all slides.",
+        ].join("\n")
         : "";
       result = await renderDirect({
         analysis: analyzed.analysis,
         combinedText: analyzed.combinedText,
         sourceFiles: analyzed.sourceFiles,
-        designPrompt: [step3PromptPrefix, typeof req.body.designPrompt === "string" ? req.body.designPrompt : ""]
+        designPrompt: [
+          runThemePrompt,
+          isRunMode ? "" : (typeof req.body.designPrompt === "string" ? req.body.designPrompt : ""),
+        ]
           .filter(Boolean)
           .join("\n"),
         styleMode,
@@ -310,7 +325,7 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
         : countSlides(html);
     const assignedTypes = assignSlideTypes(effectiveSlideCount, analyzed.analysis && analyzed.analysis.slidePlan);
     const typed = applySlideTypeAttributes(html, assignedTypes);
-    const typedHtml = isStep3Recompose ? enforceTypeVisualContract(typed.html) : typed.html;
+    const typedHtml = typed.html;
     const navLogic = variantMeta.navLogic !== false;
     const designQuality = evaluateDesignQuality({
       html: typedHtml,
@@ -324,11 +339,11 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
 
     const meta = {
       runId,
-      mode: "direct",
+      mode: buildMode,
       status,
-      creativeMode: variantMeta.creativeMode === true,
-      styleMode: variantMeta.styleMode || "normal",
-      toneMode: variantMeta.toneMode || "auto",
+      creativeMode: buildMode === "run" ? false : (variantMeta.creativeMode === true),
+      styleMode: buildMode === "run" ? "off" : (variantMeta.styleMode || "normal"),
+      toneMode: buildMode === "run" ? "off" : (variantMeta.toneMode || "auto"),
       purposeMode: "general",
       slideCount: effectiveSlideCount,
       slideTypes: assignedTypes,
@@ -350,16 +365,35 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       },
       warnings: designQuality.warnings,
       qualityReason: designQuality.reason,
+      theme: runTheme
+        ? {
+          key: runTheme.key,
+          label: runTheme.label,
+          reason: runTheme.reason,
+          source: runTheme.source,
+          llmReasonCode: runTheme.llmReasonCode,
+        }
+        : null,
+      runStages: buildMode === "run"
+        ? [
+          "1/4 analyze",
+          "2/4 llm-theme-select",
+          "3/4 llm-generate",
+          "4/4 quality-check",
+        ]
+        : null,
     };
 
     const attemptSummary = summarizeAttempts(meta.llmAttempts);
     console.info("[l3.build-direct]", JSON.stringify({
       runId,
+      mode: buildMode,
       status,
       styleMode: meta.styleMode,
-      creativeMode: meta.creativeMode,
+      creativeMode: buildMode === "run" ? false : meta.creativeMode,
       slideCount: meta.slideCount,
       whyFallback,
+      theme: meta.theme,
       llmReasonCode: variantMeta.llmReasonCode || "",
       llmRounds: Array.isArray(variantMeta.llmRounds) ? variantMeta.llmRounds : [],
       attemptSummary,
@@ -369,16 +403,16 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
     return res.json({
       ok: true,
       runId,
-      mode: "direct",
+      mode: buildMode,
       status,
       styleMode: meta.styleMode,
       toneMode: meta.toneMode,
       purposeMode: "general",
+      theme: meta.theme,
       html: typedHtml,
       whyFallback,
       llmAttempts: meta.llmAttempts,
       analysis: analyzed.analysis,
-      recomposeMode: isStep3Recompose ? "step3" : "none",
       htmlVariants: [
         {
           id: "v1",
@@ -404,6 +438,14 @@ router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
       message: error.message,
     });
   }
+}
+
+router.post("/l3/build-direct", upload.array("documents"), async (req, res) => {
+  return handleBuild(req, res, "step");
+});
+
+router.post("/l3/build-from-run", upload.array("documents"), async (req, res) => {
+  return handleBuild(req, res, "run");
 });
 
 module.exports = {

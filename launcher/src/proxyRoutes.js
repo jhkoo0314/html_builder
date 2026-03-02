@@ -101,6 +101,16 @@ function createProxyRoutes(config) {
     });
   });
 
+  router.post("/run/l3/build-from-run", async (req, res) => {
+    await proxyPost(req, res, {
+      host: "127.0.0.1",
+      port: l3Port,
+      path: "/api/l3/build-from-run",
+      timeoutMs: proxyTimeoutMs,
+      target: "L3 /api/l3/build-from-run",
+    });
+  });
+
   return router;
 }
 
